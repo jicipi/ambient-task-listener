@@ -1,0 +1,6 @@
+mlx-whisper
+fastapi
+uvicorn
+python-multipart
+sounddevice
+requests
