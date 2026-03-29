@@ -3,16 +3,49 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.action_extractor import extract_action_with_fallback as extract_action
 from app.schemas import TextInput, ListItemInput, UpdateItemInput, RenameItemInput
-from app.storage import add_item, get_all_lists, get_list, delete_item, update_item_done, rename_item
+from app.storage import (
+    add_item,
+    get_all_lists,
+    get_list,
+    delete_item,
+    update_item_done,
+    rename_item,
+    update_item_category,
+)
+from app.storage import get_pending_items, approve_pending_item, reject_pending_item
 from app.transcription import transcribe_audio_file, transcribe_bytes_to_text
 
+class NotifyPayload(BaseModel):
+    event: str = "update"
+
+class ApprovePendingPayload(BaseModel):
+    text: str | None = None
+    list: str | None = None
+    quantity: int | None = None
+    unit: str | None = None
 
 app = FastAPI(title="Ambient Task Listener Backend")
+
+connected_clients = []
+
+async def notify_clients(message: str = "update"):
+    stale_clients = []
+
+    for client in connected_clients:
+        try:
+            await client.send_text(message)
+        except Exception:
+            stale_clients.append(client)
+
+    for client in stale_clients:
+        if client in connected_clients:
+            connected_clients.remove(client)
 
 #app.add_middleware(
 #>    CORSMiddleware,
@@ -37,6 +70,73 @@ app.add_middleware(
 
 VALID_LISTS = {"shopping", "todo", "todo_pro", "appointments", "ideas"}
 
+@app.patch("/lists/{list_name}/item/{item_id}/category")
+async def patch_item_category(list_name: str, item_id: str, payload: dict):
+    category = payload.get("category")
+    updated = update_item_category(list_name, item_id, category)
+
+    if updated:
+        await notify_clients("update")
+
+    return {"updated": updated}
+
+@app.get("/pending")
+def get_pending() -> list[dict]:
+    return get_pending_items()
+
+
+@app.post("/pending/{item_id}/approve")
+async def approve_pending(item_id: str, payload: ApprovePendingPayload | None = None) -> dict:
+    ok = approve_pending_item(
+        item_id,
+        override_text=payload.text if payload else None,
+        override_list=payload.list if payload else None,
+        override_quantity=payload.quantity if payload else None,
+        override_unit=payload.unit if payload else None,
+    )
+
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+
+    await notify_clients("update")
+    return {"ok": True}
+
+
+@app.delete("/pending/{item_id}")
+async def delete_pending(item_id: str) -> dict:
+    ok = reject_pending_item(item_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+
+    await notify_clients("update")
+    return {"ok": True}
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    connected_clients.append(websocket)
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            if message.get("type") == "websocket.disconnect":
+                break
+
+    except Exception:
+        pass
+
+    finally:
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
+
+
+@app.post("/internal/notify")
+async def internal_notify(payload: NotifyPayload) -> dict:
+    await notify_clients(payload.event)
+    return {"ok": True, "event": payload.event}
+
 
 @app.get("/health")
 def health() -> dict:
@@ -60,25 +160,31 @@ def read_list(list_name: str) -> dict:
 
 
 @app.post("/lists/{list_name}")
-def create_list_item(list_name: str, payload: ListItemInput) -> dict:
+async def add_list_item(list_name: str, payload: ListItemInput) -> dict:
     if list_name not in VALID_LISTS:
         raise HTTPException(status_code=404, detail="Unknown list")
 
-    added = add_item(list_name, payload.item, payload.source_transcript)
+    created = add_item(list_name, payload.item)
+
+    if created:
+        await notify_clients("update")
 
     return {
         "list": list_name,
         "item": payload.item,
-        "added": added,
+        "created": created,
     }
-
+    
 
 @app.delete("/lists/{list_name}/item/{item_id}")
-def remove_list_item(list_name: str, item_id: str) -> dict:
+async def remove_list_item(list_name: str, item_id: str) -> dict:
     if list_name not in VALID_LISTS:
         raise HTTPException(status_code=404, detail="Unknown list")
 
     deleted = delete_item(list_name, item_id)
+
+    if deleted:
+        await notify_clients("update")
 
     return {
         "list": list_name,
@@ -88,11 +194,14 @@ def remove_list_item(list_name: str, item_id: str) -> dict:
 
 
 @app.patch("/lists/{list_name}/item/{item_id}")
-def patch_list_item(list_name: str, item_id: str, payload: UpdateItemInput) -> dict:
+async def patch_list_item(list_name: str, item_id: str, payload: UpdateItemInput) -> dict:
     if list_name not in VALID_LISTS:
         raise HTTPException(status_code=404, detail="Unknown list")
 
     updated = update_item_done(list_name, item_id, payload.done)
+
+    if updated:
+        await notify_clients("update")
 
     return {
         "list": list_name,
@@ -100,6 +209,7 @@ def patch_list_item(list_name: str, item_id: str, payload: UpdateItemInput) -> d
         "updated": updated,
         "done": payload.done,
     }
+
 
 @app.delete("/lists/{list_name}")
 def clear_list(list_name: str) -> dict:
@@ -116,11 +226,14 @@ def clear_list(list_name: str) -> dict:
     }
 
 @app.patch("/lists/{list_name}/item/{item_id}/rename")
-def rename_list_item(list_name: str, item_id: str, payload: RenameItemInput) -> dict:
+async def rename_list_item(list_name: str, item_id: str, payload: RenameItemInput) -> dict:
     if list_name not in VALID_LISTS:
         raise HTTPException(status_code=404, detail="Unknown list")
 
     updated = rename_item(list_name, item_id, payload.text)
+
+    if updated:
+        await notify_clients("update")
 
     return {
         "list": list_name,

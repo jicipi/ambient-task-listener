@@ -1,8 +1,9 @@
 from __future__ import annotations
-from app.llm_interpreter import interpret_with_llm
 
 import re
 from typing import Any
+
+from app.llm_interpreter import interpret_with_llm
 
 
 NEGATION_PATTERNS = [
@@ -53,28 +54,52 @@ WORK_KEYWORDS = [
     "comité",
 ]
 
-LEADERS = r"(?:il faut|il faudrait|il fallait|faudra|faut|pense à|n'oublie pas de)"
-PERSONAL_LEADERS = r"(?:il faut que j[ea']|il faudrait que j[ea']|il fallait que j[ea'])"
+LEADERS = (
+    r"(?:il faut|il faudrait|il fallait|faudra|faut|pense à|pensez à|"
+    r"n'oublie pas de|n’oublie pas de|rajoute|rajoutez|ajoute|ajoutez)"
+)
 
+PERSONAL_LEADERS = (
+    r"(?:il faut que |il faudrait que |il fallait que |"
+    r"je dois |je devrais |je vais devoir )"
+)
 
 SHOPPING_PATTERNS = [
-    rf"(?:{LEADERS})?\s*(?:acheter|racheter|commander)\s+(.+)",
-    rf"(?:{PERSONAL_LEADERS})(?:achète|achete|acheter)\s+(.+)",
+    r"il\s+faut\s+que\s+j['’]ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"il\s+faut\s+que\s+je\s+ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"il\s+faudrait\s+que\s+j['’]ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"il\s+faudrait\s+que\s+je\s+ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"il\s+fallait\s+que\s+j['’]ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"il\s+fallait\s+que\s+je\s+ach[eè]te?\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"je\s+dois\s+achet\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"je\s+devrais\s+achet\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"je\s+vais\s+devoir\s+achet\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    rf"(?:{LEADERS})?\s*(?:achet\w*|rachet\w*|command\w*|ajout\w*|rajout\w*|prendre)\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     r"on\s+n[' ]?a\s+plus\s+de\s+(.+)",
     r"il\s+nous\s+faut\s+(.+)",
+    r"rajoute\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"ajoute\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"^(\d+\s*(?:kg|g|grammes?|l|litres?|ml|cl|paquets?|packs?|bouteilles?)\s+.+)$",
+    r"^(\d+\s+.+)$",
 ]
 
 TODO_PATTERNS = [
     rf"(?:{LEADERS})\s*appeler\s+(.+)",
     rf"(?:{LEADERS})\s*envoyer\s+(.+)",
     rf"(?:{LEADERS})\s*faire\s+(.+)",
-    rf"(?:{PERSONAL_LEADERS})(?:appelle|appeler)\s+(.+)",
-    rf"(?:{PERSONAL_LEADERS})(?:envoie|envoyer)\s+(.+)",
-    rf"(?:{PERSONAL_LEADERS})(?:fasse|faire)\s+(.+)",
+    rf"(?:{LEADERS})\s*penser\s+à\s+(.+)",
+    rf"(?:{LEADERS})\s*prévoir\s+(.+)",
+    rf"(?:{PERSONAL_LEADERS})\s*appeler\s+(.+)",
+    rf"(?:{PERSONAL_LEADERS})\s*envoyer\s+(.+)",
+    rf"(?:{PERSONAL_LEADERS})\s*faire\s+(.+)",
+    rf"(?:{PERSONAL_LEADERS})\s*penser\s+à\s+(.+)",
+    r"pense\s+à\s+(.+)",
+    r"n['’]oublie\s+pas\s+de\s+(.+)",
 ]
 
 APPOINTMENT_PATTERNS = [
     rf"(?:{LEADERS})?\s*prendre\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
+    r"(?:prends|prenez)\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
     rf"(?:{LEADERS})\s*réserver\s+(.+)",
     rf"(?:{PERSONAL_LEADERS})(?:prenne|prendre)\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
 ]
@@ -88,13 +113,15 @@ IDEA_PATTERNS = [
 ]
 
 TODO_PRO_PATTERNS = [
-    r"(?:il faut que je|je dois|il faut|faudra|je dois)\s+traiter\s+(.+)",
-    r"(?:il faut que je|je dois|il faut|faudra|je dois)\s+préparer\s+(.+)",
-    r"(?:il faut que je|je dois|il faut|faudra|je dois)\s+envoyer\s+(.+)",
-    r"(?:il faut que je|je dois|il faut|faudra|je dois)\s+caler\s+(.+)",
-    r"(?:il faut que je|je dois|il faut|faudra|je dois)\s+organiser\s+(.+)",
-    r"(?:préparer|envoyer|caler|organiser)\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+traiter\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+préparer\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+envoyer\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+caler\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+organiser\s+(.+)",
+    r"(?:il faut que je|je dois|je devrais|faudra|il faut)\s+planifier\s+(.+)",
+    r"(?:préparer|envoyer|caler|organiser|planifier)\s+(.+)",
 ]
+
 
 def contains_negation(text: str) -> bool:
     return any(re.search(pattern, text) for pattern in NEGATION_PATTERNS)
@@ -116,7 +143,7 @@ def remove_time_suffixes(item: str) -> str:
     return cleaned
 
 
-def clean_item(text: str) -> str:
+def clean_extracted_item(text: str, list_name: str | None = None) -> str:
     item = text.strip().lower()
     item = item.strip(" .,!?:;")
     item = remove_time_suffixes(item)
@@ -130,11 +157,12 @@ def clean_item(text: str) -> str:
         "le ",
         "la ",
         "les ",
-        "un ",
-        "une ",
         "au ",
         "aux ",
     ]
+
+    if list_name != "shopping":
+        prefixes.extend(["un ", "une "])
 
     for prefix in prefixes:
         if item.startswith(prefix):
@@ -153,6 +181,7 @@ def build_result(
     list_name: str,
     time_hint: str | None = None,
     needs_confirmation: bool = True,
+    source: str = "rule",
 ) -> dict[str, Any]:
     return {
         "transcript": transcript,
@@ -162,6 +191,8 @@ def build_result(
         "list": list_name,
         "needs_confirmation": needs_confirmation,
         "time_hint": time_hint,
+        "source": source,
+        "decision": "add",
     }
 
 
@@ -176,7 +207,13 @@ def match_patterns(
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
-            item = clean_item(match.group(1))
+            groups = [g for g in match.groups() if g]
+            if not groups:
+                continue
+
+            raw_item = groups[-1]
+            item = clean_extracted_item(raw_item, list_name=list_name)
+
             return build_result(
                 transcript=transcript,
                 intent=intent,
@@ -244,9 +281,11 @@ def extract_action(text: str) -> dict[str, Any]:
     )
     if todo_pro:
         pro_text = (todo_pro.get("item") or "").lower()
-        if any(keyword in normalized for keyword in WORK_KEYWORDS) or any(keyword in pro_text for keyword in WORK_KEYWORDS):
+        if any(keyword in normalized for keyword in WORK_KEYWORDS) or any(
+            keyword in pro_text for keyword in WORK_KEYWORDS
+        ):
             return todo_pro
-    
+
     todo = match_patterns(
         normalized,
         transcript,
@@ -269,28 +308,32 @@ def extract_action(text: str) -> dict[str, Any]:
     if idea:
         return idea
 
-    return build_result(
-        transcript=transcript,
-        intent="unknown",
-        item=None,
-        confidence=0.20,
-        list_name="inbox",
-        needs_confirmation=False,
-    )
+    return {
+        "transcript": transcript,
+        "intent": "unknown",
+        "item": None,
+        "confidence": 0.20,
+        "list": "inbox",
+        "needs_confirmation": False,
+        "time_hint": None,
+        "source": "rule",
+        "decision": "ignore",
+    }
+
 
 def extract_action_with_fallback(text: str) -> dict[str, Any]:
     result = extract_action(text)
 
     if result["intent"] != "unknown":
+        result["decision"] = "confirm" if result["confidence"] < 0.7 else "add"
         return result
 
     normalized = text.lower().strip()
 
-    # phrases trop courtes -> on n'appelle pas le LLM
     if len(normalized.split()) < 3:
+        result["decision"] = "ignore"
         return result
 
-    # phrases non actionnables fréquentes
     trivial_phrases = {
         "ok",
         "oui",
@@ -305,22 +348,38 @@ def extract_action_with_fallback(text: str) -> dict[str, Any]:
     }
 
     if normalized.strip(" .!?") in trivial_phrases:
+        result["decision"] = "ignore"
         return result
 
-    # si aucun mot typique d'action / besoin / idée / rendez-vous, on évite le LLM
     action_keywords = [
-        "acheter", "racheter", "commander",
-        "appeler", "envoyer", "faire", "traiter", "préparer",
-        "réserver", "prendre rendez-vous", "caler",
-        "idée", "manque", "plus de", "besoin",
-        "devis", "réunion", "formation", "demande",
+        "acheter",
+        "racheter",
+        "commander",
+        "appeler",
+        "envoyer",
+        "faire",
+        "traiter",
+        "préparer",
+        "réserver",
+        "prendre rendez-vous",
+        "caler",
+        "idée",
+        "manque",
+        "plus de",
+        "besoin",
+        "devis",
+        "réunion",
+        "formation",
+        "demande",
     ]
 
     if not any(keyword in normalized for keyword in action_keywords):
+        result["decision"] = "ignore"
         return result
 
     llm = interpret_with_llm(text)
     if not llm:
+        result["decision"] = "ignore"
         return result
 
     intent = llm.get("intent", "none")
@@ -332,10 +391,20 @@ def extract_action_with_fallback(text: str) -> dict[str, Any]:
     if item in ("null", "", "none", "None"):
         item = None
 
-    if time_hint in ("null", "", "none", "None", "now", "maintenant", "today", "aujourd'hui"):
+    if time_hint in (
+        "null",
+        "",
+        "none",
+        "None",
+        "now",
+        "maintenant",
+        "today",
+        "aujourd'hui",
+    ):
         time_hint = None
 
     if intent == "none" or not item:
+        result["decision"] = "ignore"
         return result
 
     list_map = {
@@ -354,4 +423,6 @@ def extract_action_with_fallback(text: str) -> dict[str, Any]:
         "list": list_map.get(intent, "inbox"),
         "needs_confirmation": True,
         "time_hint": time_hint,
+        "source": "llm",
+        "decision": "confirm",
     }

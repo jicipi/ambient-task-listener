@@ -98,3 +98,42 @@ def interpret_with_llm(text: str):
     except Exception as e:
         print("LLM error:", e)
         return None
+
+
+def categorize_with_llm(text: str) -> str | None:
+    try:
+        result = interpret_with_llm(
+            f"Catégorise cet élément: {text}. "
+            "Réponds uniquement par une catégorie parmi: "
+            "fruits, légumes, viande, poisson, produits laitiers, épicerie, ménager, autres."
+        )
+
+        if not result:
+            return None
+
+        category = result.get("category") if isinstance(result, dict) else str(result)
+
+        if not category:
+            return None
+
+        category = category.strip().lower()
+
+        allowed = {
+            "fruits",
+            "légumes",
+            "viande",
+            "poisson",
+            "produits laitiers",
+            "épicerie",
+            "ménager",
+            "autres",
+        }
+
+        if category in allowed:
+            return category
+
+        return None
+
+    except Exception as e:
+        print("Erreur LLM catégorisation:", e)
+        return None

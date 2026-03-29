@@ -5,7 +5,6 @@ SPLIT_PATTERNS = [
     r"\bet puis\b",
     r"\bpuis\b",
     r"\bensuite\b",
-    r"\bet\b",
     r",",
 ]
 

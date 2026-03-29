@@ -120,3 +120,12 @@ Microphone input
 → FastAPI backend  
 → JSON storage  
 → Flutter mobile/web app
+
+### Shopping parsing pipeline
+
+1. Nettoyage du transcript
+2. Extraction item
+3. Parsing quantité / unité
+4. Normalisation
+5. Catégorisation
+6. Stockage JSON

@@ -6,19 +6,19 @@ Construire un assistant ambiant capable de capter la parole naturelle, d’en ex
 
 Architecture cible :
 
-Microphones (ESP32)
-↓
-Audio streaming
-↓
-Python listener (VAD + Whisper)
-↓
-Extraction d’actions
-↓
-Backend FastAPI
-↓
-Stockage JSON / DB
-↓
-Application mobile Flutter
+Microphones (ESP32)  
+↓  
+Audio streaming  
+↓  
+Python listener (VAD + Whisper)  
+↓  
+Extraction d’actions  
+↓  
+Backend FastAPI  
+↓  
+Stockage JSON / DB  
+↓  
+Application mobile Flutter  
 
 ---
 
@@ -26,22 +26,22 @@ Application mobile Flutter
 
 Objectif : démontrer la faisabilité complète du pipeline voix → tâche.
 
-Audio & transcription
+## Audio & transcription
 - [x] capture micro locale
 - [x] écoute semi-continue avec VAD
 - [x] transcription locale MLX Whisper
 
-Extraction d’actions
+## Extraction d’actions
 - [x] extraction d’action simple
 - [x] support multi-actions dans une phrase
 
-Stockage
+## Stockage
 - [x] stockage JSON local
 
-Backend
+## Backend
 - [x] API FastAPI pour les listes
 
-Application mobile
+## Application mobile
 - [x] application Flutter
 - [x] dashboard avec listes
 - [x] affichage des items
@@ -51,12 +51,10 @@ Application mobile
 - [x] toggle done
 - [x] tri intelligent
 - [x] compteurs sur le dashboard
-- [x] rename item
-- [x] automatic sorting (done items last)
-- [x] dashboard counters
-- [x] automatic refresh of lists (5s polling)
+- [x] rafraîchissement automatique des listes
+- [x] WebSocket temps réel
 
-Résultat :
+Résultat :  
 pipeline voix → action → mobile fonctionnel
 
 ---
@@ -65,24 +63,73 @@ pipeline voix → action → mobile fonctionnel
 
 Objectif : améliorer la fiabilité de l’extraction d’actions.
 
-- [ ] correction ASR contextuelle
-- [ ] déduplication des actions
-- [ ] meilleure gestion des formulations naturelles
+- [x] déduplication sémantique des tâches
+- [x] amélioration partielle des formulations shopping
+- [x] parsing quantités / unités pour shopping
+- [x] catégorisation automatique des courses
+- [x] apprentissage des catégories utilisateur (persisté)
+- [x] mise à jour dynamique des catégories depuis l’UI
+- [x] mise à jour temps réel via WebSocket (backend → mobile)
+- [x] normalisation des items (cleaning + parsing centralisé)
+- [~] cohérence des opérations CRUD (édition + fusion + apprentissage)
+- [~] cohérence backend ↔ mobile (WebSocket, refresh, sync état)
+- [~] correction ASR contextuelle (premières règles locales)
+- [~] meilleure gestion des formulations naturelles todo / todo pro
 - [ ] gestion avancée des dates et échéances
-- [ ] apprentissage du vocabulaire utilisateur
+- [~] apprentissage utilisateur (catégories + synonymes OK, vocabulaire à étendre)
 - [ ] résolution d’ambiguïtés (pompier / plombier)
+- [~] fusion intelligente des quantités (édition + renommage + ajout, hors conversion d’unités)
+- [x] fusion à l’ajout alignée avec l’édition
+- [ ] conversion d’unités (ex : g ↔ kg, ml ↔ l)
+- [ ] synonymes métier (ex : patates → pommes de terre)
 
 ---
 
-# Phase 3 — Expérience assistant
+# Phase 3 — Moteur de décision assistant
 
-Objectif : rendre l’assistant réellement agréable à utiliser.
+Objectif : transformer le système en assistant intelligent capable de décider quoi faire avec une phrase.
 
-- [ ] confirmation intelligente des actions
-- [ ] meilleure gestion des silences
-- [ ] segmentation plus robuste des phrases
-- [ ] amélioration de listen_loop.py
-- [ ] wake word local
+## Décision intelligente
+
+- [x] introduction des décisions : add / confirm / ignore
+- [x] distinction règles fortes vs faible confiance
+- [x] filtrage des phrases non pertinentes
+- [x] intégration temps réel dans listen_loop avec feedback utilisateur
+
+## Améliorations à venir
+
+- [ ] ajustement dynamique du seuil de confiance
+- [~] confirmation utilisateur simple (UI)
+- [ ] confirmation utilisateur avancée (édition + validation)
+- [ ] priorisation des actions
+- [ ] gestion des actions multiples complexes
+
+---
+
+## Compréhension hybride règles + IA
+
+- [x] règles pour cas simples
+- [x] fallback LLM pour cas ambigus
+- [ ] arbitrage avancé règles vs IA
+- [ ] score de confiance combiné
+
+---
+
+## Préparation interaction utilisateur
+
+- [ ] stockage temporaire des actions à confirmer
+- [ ] feedback utilisateur (valider / refuser)
+- [ ] apprentissage des corrections
+
+---
+
+Résultat attendu :
+
+Le système devient capable de :
+
+- ignorer le bruit
+- détecter les intentions utiles
+- décider automatiquement ou demander confirmation
 
 ---
 
@@ -90,12 +137,15 @@ Objectif : rendre l’assistant réellement agréable à utiliser.
 
 Objectif : améliorer l’expérience utilisateur mobile.
 
-- [ ] rafraîchissement automatique des listes
-- [ ] WebSocket temps réel
+- [x] regroupement des courses par catégorie
+- [x] affichage quantité + unité dans les listes
+- [ ] tri manuel / bouton de tri
+- [ ] ordre de catégories personnalisé
 - [ ] swipe gestures (delete / edit)
 - [ ] édition inline
 - [ ] animations d’apparition des tâches
 - [ ] notifications / rappels
+- [ ] mode “courses” optimisé pour usage en magasin
 
 ---
 
@@ -115,10 +165,12 @@ Objectif : transformer le prototype en assistant ambiant physique.
 
 Objectif : combiner règles rapides et compréhension LLM.
 
-- [ ] garder les règles pour les cas évidents
-- [ ] ajouter un interpréteur LLM en fallback
+- [x] garder les règles pour les cas évidents
+- [x] ajouter un interpréteur LLM en fallback
 - [ ] comparer règles vs LLM
 - [ ] arbitrage automatique selon confiance
+- [ ] enrichissement du parsing métier par IA
+- [ ] capacité à proposer de nouveaux types d’items
 
 ---
 
@@ -130,15 +182,14 @@ Objectif : assistant ambiant réellement utilisable au quotidien.
 - [ ] synchronisation mobile
 - [ ] intégration agenda
 - [ ] rappels intelligents
+- [ ] contexte utilisateur (personnes, projets, lieux)
+- [ ] interaction vocale contextuelle
 
 ---
 
 # Extensions possibles
 
-Ajouter une catégorie :
-
-ideas
-
+## Catégorie ideas
 Exemples :
 
 - idée de blague
@@ -146,8 +197,7 @@ Exemples :
 - idée de jeu de mots
 - note vocale rapide
 
-Objectif :
-
+Objectif :  
 capturer toute pensée rapide sans friction.
 
 ---

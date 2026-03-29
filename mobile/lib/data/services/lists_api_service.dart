@@ -77,26 +77,110 @@ class ListsApiService {
     return data['added'] == true;
   }
 
-    Future<bool> renameItem({
-        required String listName,
-        required String itemId,
-        required String text,
-    }) async {
-        final response = await http.patch(
-        Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId/rename'),
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-            'text': text,
-        }),
-        );
+  Future<bool> renameItem({
+    required String listName,
+    required String itemId,
+    required String text,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId/rename'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'text': text,
+      }),
+    );
 
-        if (response.statusCode != 200) {
-        return false;
-        }
-
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['updated'] == true;
+    if (response.statusCode != 200) {
+      return false;
     }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['updated'] == true;
+  }
+
+  Future<bool> updateItemCategory({
+    required String listName,
+    required String itemId,
+    required String category,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId/category'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'category': category,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      return false;
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['updated'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchPendingItems() async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/pending'),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Erreur lors du chargement des éléments à confirmer');
+    }
+
+    final decoded = jsonDecode(response.body) as List;
+    return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  Future<bool> approvePendingItem(
+    String itemId, {
+    String? text,
+    String? listName,
+    int? quantity,
+    String? unit,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/pending/$itemId/approve'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'text': text,
+        'list': listName,
+        'quantity': quantity,
+        'unit': unit,
+      }),
+    );
+
+    return response.statusCode == 200;
+  }
+
+  Future<bool> rejectPendingItem(String itemId) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/pending/$itemId'),
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<int> fetchPendingCount() async {
+    final items = await fetchPendingItems();
+    return items.length;
+  }
+
+  Future<Map<String, int>> fetchPendingCountsByList() async {
+    final items = await fetchPendingItems();
+
+    final Map<String, int> counts = {};
+
+    for (final item in items) {
+      final listName = (item['list'] ?? 'inbox').toString();
+      counts[listName] = (counts[listName] ?? 0) + 1;
+    }
+
+    return counts;
+  }
 }

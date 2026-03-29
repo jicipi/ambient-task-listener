@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
 
 class ListDetailPage extends StatefulWidget {
@@ -12,6 +13,17 @@ class ListDetailPage extends StatefulWidget {
     required this.title,
   });
 
+  static const shoppingCategories = [
+    'fruits',
+    'légumes',
+    'viande',
+    'poisson',
+    'produits laitiers',
+    'épicerie',
+    'ménager',
+    'autres',
+  ];
+
   @override
   State<ListDetailPage> createState() => _ListDetailPageState();
 }
@@ -20,23 +32,50 @@ class _ListDetailPageState extends State<ListDetailPage> {
   final ListsApiService _api = ListsApiService();
 
   late Future<Map<String, dynamic>> _future;
-  Timer? _refreshTimer;
+  WebSocketChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _reload();
-
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _reload(),
-    );
+    _connectWebSocket();
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _channel?.sink.close();
     super.dispose();
+  }
+
+  void _connectWebSocket() {
+    _channel?.sink.close();
+
+    _channel = WebSocketChannel.connect(
+      Uri.parse('ws://localhost:8000/ws'),
+    );
+
+    _channel!.stream.listen(
+      (message) {
+        debugPrint('ListDetail WS message: $message');
+        _reload();
+      },
+      onError: (error) {
+        debugPrint('ListDetail WS error: $error');
+        _reconnect();
+      },
+      onDone: () {
+        debugPrint('ListDetail WS closed');
+        _reconnect();
+      },
+      cancelOnError: true,
+    );
+  }
+
+  void _reconnect() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _connectWebSocket();
+    });
   }
 
   void _reload() {
@@ -57,17 +96,10 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
     if (ok) {
       _reload();
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur de mise à jour')),
-      );
     }
   }
 
-  Future<void> _deleteItem({
-    required String itemId,
-  }) async {
+  Future<void> _deleteItem({required String itemId}) async {
     final ok = await _api.deleteItem(
       listName: widget.listKey,
       itemId: itemId,
@@ -75,11 +107,6 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
     if (ok) {
       _reload();
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur de suppression')),
-      );
     }
   }
 
@@ -97,9 +124,6 @@ class _ListDetailPageState extends State<ListDetailPage> {
             decoration: const InputDecoration(
               hintText: 'Nouvel item',
             ),
-            onSubmitted: (value) {
-              Navigator.of(context).pop(value.trim());
-            },
           ),
           actions: [
             TextButton(
@@ -107,7 +131,8 @@ class _ListDetailPageState extends State<ListDetailPage> {
               child: const Text('Annuler'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: const Text('Ajouter'),
             ),
           ],
@@ -122,39 +147,57 @@ class _ListDetailPageState extends State<ListDetailPage> {
       text: text,
     );
 
-    if (ok) {
-      _reload();
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur d’ajout')),
-      );
-    }
+    if (ok) _reload();
   }
 
-  Future<void> _renameItemDialog(String itemId, String currentText) async {
-    final controller = TextEditingController(text: currentText);
+  /// 🔥 NOUVELLE VERSION AVEC CATÉGORIE
+  Future<void> _editItemDialog({
+    required String itemId,
+    required String currentText,
+    required String currentCategory,
+  }) async {
+    final textController = TextEditingController(text: currentText);
+    String selectedCategory = currentCategory;
 
-    final newText = await showDialog<String>(
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Renommer l'item"),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
+          title: const Text("Modifier l'item"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: textController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: "Texte"),
+              ),
+              const SizedBox(height: 12),
+              if (widget.listKey == "shopping")
+                DropdownButtonFormField<String>(
+                  value: selectedCategory,
+                  decoration: const InputDecoration(labelText: "Catégorie"),
+                  items: ListDetailPage.shoppingCategories.map((category) {
+                    return DropdownMenuItem(
+                      value: category,
+                      child: Text(category),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      selectedCategory = value;
+                    }
+                  },
+                ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context, false),
               child: const Text("Annuler"),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.pop(context, controller.text.trim());
-              },
+              onPressed: () => Navigator.pop(context, true),
               child: const Text("Valider"),
             ),
           ],
@@ -162,22 +205,31 @@ class _ListDetailPageState extends State<ListDetailPage> {
       },
     );
 
-    if (newText == null || newText.isEmpty) return;
+    if (result != true) return;
 
-    final ok = await _api.renameItem(
-      listName: widget.listKey,
-      itemId: itemId,
-      text: newText,
-    );
+    final newText = textController.text.trim();
+    bool ok = true;
 
-    if (ok) {
-      _reload();
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erreur de renommage")),
-      );
+    if (newText.isNotEmpty && newText != currentText) {
+      ok = ok &&
+          await _api.renameItem(
+            listName: widget.listKey,
+            itemId: itemId,
+            text: newText,
+          );
     }
+
+    if (widget.listKey == "shopping" &&
+        selectedCategory != currentCategory) {
+      ok = ok &&
+          await _api.updateItemCategory(
+            listName: widget.listKey,
+            itemId: itemId,
+            category: selectedCategory,
+          );
+    }
+
+    if (ok) _reload();
   }
 
   @override
@@ -193,84 +245,100 @@ class _ListDetailPageState extends State<ListDetailPage> {
       body: FutureBuilder<Map<String, dynamic>>(
         future: _future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (snapshot.hasError) {
-            return Center(child: Text("Erreur: ${snapshot.error}"));
-          }
-
-          final data = snapshot.data ?? {};
+          final data = snapshot.data!;
           final rawItems = (data[widget.listKey] as List?) ?? [];
           final items = List<Map<String, dynamic>>.from(rawItems);
 
-          items.sort((a, b) {
-            final aDone = a["done"] == true;
-            final bDone = b["done"] == true;
-
-            if (aDone != bDone) {
-              return aDone ? 1 : -1;
-            }
-
-            final aText = (a["text"] ?? "").toString().toLowerCase();
-            final bText = (b["text"] ?? "").toString().toLowerCase();
-
-            return aText.compareTo(bText);
-          });
-
           if (items.isEmpty) {
-            return const Center(
-              child: Text("Liste vide"),
-            );
+            return const Center(child: Text("Liste vide"));
           }
 
-          return ListView.builder(
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final itemId = item["id"] ?? "";
-              final text = item["text"] ?? "";
-              final done = item["done"] ?? false;
+          final Map<String, List<Map<String, dynamic>>> grouped = {};
 
-              return ListTile(
-                leading: Checkbox(
-                  value: done,
-                  onChanged: (value) {
-                    if (value == null || itemId.isEmpty) return;
-                    _toggleDone(
-                      itemId: itemId,
-                      newValue: value,
-                    );
-                  },
-                ),
-                title: Text(
-                  text,
-                  style: TextStyle(
-                    decoration: done ? TextDecoration.lineThrough : null,
+          for (final item in items) {
+            final category =
+                (item["category"] ?? "autres").toString().toLowerCase();
+            grouped.putIfAbsent(category, () => []);
+            grouped[category]!.add(item);
+          }
+
+          final categories = grouped.keys.toList()..sort();
+
+          return ListView(
+            children: categories.map((category) {
+              final categoryItems = grouped[category]!;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      category.toUpperCase(),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
                   ),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined),
-                      onPressed: () {
-                        _renameItemDialog(itemId, text);
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: itemId.isEmpty
-                          ? null
-                          : () {
-                              _deleteItem(itemId: itemId);
-                            },
-                    ),
-                  ],
-                ),
+                  ...categoryItems.map((item) {
+                    final itemId = item["id"];
+                    final text = item["text"] ?? "";
+                    final done = item["done"] == true;
+                    final quantity = item["quantity"];
+                    final unit = item["unit"];
+                    final category = item["category"] ?? "autres";
+
+                    String display = text;
+                    if (quantity != null && unit != null) {
+                      display = "$quantity $unit $text";
+                    } else if (quantity != null) {
+                      display = "$quantity $text";
+                    }
+
+                    return ListTile(
+                      leading: Checkbox(
+                        value: done,
+                        onChanged: (v) {
+                          if (v != null) {
+                            _toggleDone(itemId: itemId, newValue: v);
+                          }
+                        },
+                      ),
+                      title: Text(
+                        display,
+                        style: TextStyle(
+                          decoration:
+                              done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _editItemDialog(
+                              itemId: itemId,
+                              currentText: text,
+                              currentCategory: category,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _deleteItem(itemId: itemId),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               );
-            },
+            }).toList(),
           );
         },
       ),

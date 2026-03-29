@@ -4,7 +4,7 @@ import sounddevice as sd
 
 
 class VADRecorder:
-    def __init__(self, device=2, aggressiveness=2):
+    def __init__(self, device=2, aggressiveness=3):
         self.device = device
         self.sample_rate = 16000
         self.frame_duration_ms = 30
@@ -12,15 +12,23 @@ class VADRecorder:
         self.dtype = "int16"
         self.vad = webrtcvad.Vad(aggressiveness)
 
+        # réglages robustes en environnement bruyant
+        self.start_buffer_frames = 12   # ~360 ms
+        self.end_buffer_frames = 12     # ~360 ms
+        self.max_frames_after_trigger = 333  # ~10 secondes max
+
     def record_phrase(self):
         print("🎤 écoute...")
 
         frame_size = int(self.sample_rate * self.frame_duration_ms / 1000)
         bytes_per_frame = frame_size * 2  # int16 mono = 2 octets par sample
 
-        ring_buffer = collections.deque(maxlen=20)
+        start_buffer = collections.deque(maxlen=self.start_buffer_frames)
+        end_buffer = collections.deque(maxlen=self.end_buffer_frames)
+
         triggered = False
         voiced_frames = []
+        triggered_frame_count = 0
 
         with sd.RawInputStream(
             samplerate=self.sample_rate,
@@ -41,21 +49,37 @@ class VADRecorder:
                 is_speech = self.vad.is_speech(frame, self.sample_rate)
 
                 if not triggered:
-                    ring_buffer.append((frame, is_speech))
-                    num_voiced = sum(1 for _, speech in ring_buffer if speech)
+                    start_buffer.append((frame, is_speech))
+                    num_voiced = sum(1 for _, speech in start_buffer if speech)
 
-                    if len(ring_buffer) == ring_buffer.maxlen and num_voiced > 0.8 * ring_buffer.maxlen:
+                    # déclenchement plus réactif
+                    if (
+                        len(start_buffer) == start_buffer.maxlen
+                        and num_voiced >= 0.7 * start_buffer.maxlen
+                    ):
                         triggered = True
                         print("🗣 parole détectée")
-                        voiced_frames.extend(f for f, _ in ring_buffer)
-                        ring_buffer.clear()
+                        voiced_frames.extend(f for f, _ in start_buffer)
+                        start_buffer.clear()
+                        end_buffer.clear()
                 else:
                     voiced_frames.append(frame)
-                    ring_buffer.append((frame, is_speech))
-                    num_unvoiced = sum(1 for _, speech in ring_buffer if not speech)
+                    end_buffer.append((frame, is_speech))
+                    triggered_frame_count += 1
 
-                    if len(ring_buffer) == ring_buffer.maxlen and num_unvoiced > 0.8 * ring_buffer.maxlen:
+                    num_unvoiced = sum(1 for _, speech in end_buffer if not speech)
+
+                    # coupe plus vite
+                    if (
+                        len(end_buffer) == end_buffer.maxlen
+                        and num_unvoiced >= 0.7 * end_buffer.maxlen
+                    ):
                         print("✅ fin de phrase")
+                        break
+
+                    # sécurité si bruit continu / gens qui parlent autour
+                    if triggered_frame_count >= self.max_frames_after_trigger:
+                        print("⏱ fin forcée (durée max atteinte)")
                         break
 
         return b"".join(voiced_frames)

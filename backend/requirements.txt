@@ -4,3 +4,4 @@ uvicorn
 python-multipart
 sounddevice
 requests
+uvicorn[standard]

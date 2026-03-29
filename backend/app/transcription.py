@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 
 import mlx_whisper
 
-
-#DEFAULT_MODEL = "mlx-community/whisper-small-mlx"
-DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
+DEFAULT_MODEL = "mlx-community/whisper-small-mlx"
+# DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
 
 
 def transcribe_audio_file(audio_path: str, model_name: str = DEFAULT_MODEL) -> str:
@@ -16,11 +16,16 @@ def transcribe_audio_file(audio_path: str, model_name: str = DEFAULT_MODEL) -> s
     if not path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+    t0 = time.perf_counter()
+
     result = mlx_whisper.transcribe(
         str(path),
         path_or_hf_repo=model_name,
         language="fr",
     )
+
+    dt = time.perf_counter() - t0
+    print(f"⏱ transcription en {dt:.2f}s avec {model_name}")
 
     text = result.get("text", "").strip()
     return text
