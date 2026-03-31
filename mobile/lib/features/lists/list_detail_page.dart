@@ -623,10 +623,12 @@ class _ListDetailPageState extends State<ListDetailPage> {
           return ListView(
             children: categories.map((category) {
               final categoryItems = grouped[category]!;
+              final showHeader = widget.listKey == "shopping";
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (showHeader)
                   Padding(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -682,22 +684,36 @@ class _ListDetailPageState extends State<ListDetailPage> {
                         }
                         return false;
                       },
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: done,
-                          onChanged: (v) {
-                            if (v != null) {
-                              _toggleDone(itemId: itemId, newValue: v);
-                            }
-                          },
-                        ),
-                        title: Text(
-                          display,
-                          style: TextStyle(
-                            decoration: done ? TextDecoration.lineThrough : null,
-                          ),
-                        ),
-                      ),
+                      child: widget.listKey == "shopping"
+                          ? ListTile(
+                              leading: Checkbox(
+                                value: done,
+                                onChanged: (v) {
+                                  if (v != null) _toggleDone(itemId: itemId, newValue: v);
+                                },
+                              ),
+                              title: Text(
+                                display,
+                                style: TextStyle(
+                                  decoration: done ? TextDecoration.lineThrough : null,
+                                ),
+                              ),
+                            )
+                          : _InlineEditTile(
+                              key: ValueKey('inline-$itemId'),
+                              text: text,
+                              display: display,
+                              done: done,
+                              onToggle: () => _toggleDone(itemId: itemId, newValue: !done),
+                              onRename: (newText) async {
+                                await _api.renameItem(
+                                  listName: widget.listKey,
+                                  itemId: itemId.toString(),
+                                  text: newText,
+                                );
+                                _reload();
+                              },
+                            ),
                     );
                   }),
                 ],
@@ -706,6 +722,126 @@ class _ListDetailPageState extends State<ListDetailPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class _InlineEditTile extends StatefulWidget {
+  final String text;
+  final String display;
+  final bool done;
+  final VoidCallback onToggle;
+  final Future<void> Function(String) onRename;
+
+  const _InlineEditTile({
+    super.key,
+    required this.text,
+    required this.display,
+    required this.done,
+    required this.onToggle,
+    required this.onRename,
+  });
+
+  @override
+  State<_InlineEditTile> createState() => _InlineEditTileState();
+}
+
+class _InlineEditTileState extends State<_InlineEditTile> {
+  bool _editing = false;
+  late TextEditingController _ctrl;
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.text);
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing) {
+        setState(() {
+          _editing = false;
+          _ctrl.text = widget.text;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_InlineEditTile old) {
+    super.didUpdateWidget(old);
+    if (!_editing) _ctrl.text = widget.text;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final newText = _ctrl.text.trim();
+    setState(() => _editing = false);
+    if (newText.isNotEmpty && newText != widget.text) widget.onRename(newText);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Checkbox(value: widget.done, onChanged: (_) => widget.onToggle()),
+      title: _editing
+          ? TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              autofocus: true,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 6),
+                border: UnderlineInputBorder(),
+              ),
+              onSubmitted: (_) => _confirm(),
+              textInputAction: TextInputAction.done,
+            )
+          : GestureDetector(
+              onTap: () {
+                _ctrl.text = widget.text;
+                setState(() => _editing = true);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _focus.requestFocus();
+                  _ctrl.selection = TextSelection(
+                    baseOffset: 0,
+                    extentOffset: _ctrl.text.length,
+                  );
+                });
+              },
+              child: Text(
+                widget.display,
+                style: TextStyle(
+                  decoration: widget.done ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+      trailing: _editing
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.check, color: Colors.green),
+                  onPressed: _confirm,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => setState(() {
+                    _editing = false;
+                    _ctrl.text = widget.text;
+                  }),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            )
+          : null,
     );
   }
 }

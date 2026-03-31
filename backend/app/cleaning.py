@@ -1,6 +1,7 @@
 import re
 from app.llm_interpreter import categorize_with_llm
 from app.user_learning import get_learned_category, get_learned_synonym
+from app.asr_corrections import correct_transcript
 
 CATEGORIES = {
     "légumes": [
@@ -64,20 +65,8 @@ CATEGORIES = {
 def normalize_transcript(text: str) -> str:
     if not text:
         return ""
-
     text = text.strip().lower()
-
-    corrections = {
-        "de main": "demain",
-        "plombier de main": "plombier demain",
-        "pombier": "plombier",
-        "fondier": "plombier",
-        "si clémentine": "6 clémentines",
-    }
-
-    for wrong, right in corrections.items():
-        text = text.replace(wrong, right)
-
+    text = correct_transcript(text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 

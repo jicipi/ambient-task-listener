@@ -5,6 +5,7 @@ from typing import Any
 
 from app.llm_interpreter import interpret_with_llm
 from app.date_parser import parse_french_date
+from app.asr_corrections import correct_transcript, is_likely_shopping_mishearing
 
 
 NEGATION_PATTERNS = [
@@ -234,6 +235,7 @@ def match_patterns(
 
 def extract_action(text: str) -> dict[str, Any]:
     transcript = text.strip()
+    transcript = correct_transcript(transcript)
     normalized = transcript.lower().strip()
 
     if not normalized:
@@ -276,6 +278,10 @@ def extract_action(text: str) -> dict[str, Any]:
         0.80,
     )
     if shopping:
+        item_text = shopping.get("item") or ""
+        if is_likely_shopping_mishearing(item_text):
+            shopping["confidence"] = min(shopping.get("confidence", 0.8), 0.45)
+            shopping["needs_confirmation"] = True
         return shopping
 
     todo_pro = match_patterns(
