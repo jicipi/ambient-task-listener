@@ -115,39 +115,88 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
   Future<void> _showAddItemDialog() async {
     final controller = TextEditingController();
+    DateTime? selectedDate;
 
-    final text = await showDialog<String>(
+    final isAppointments = widget.listKey == "appointments";
+
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('Ajouter dans ${widget.title}'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Nouvel item',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(controller.text.trim()),
-              child: const Text('Ajouter'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              title: Text('Ajouter dans ${widget.title}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(hintText: 'Nouvel item'),
+                  ),
+                  if (isAppointments) ...[
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: () async {
+                        final now = DateTime.now();
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate ?? now,
+                          firstDate: now.subtract(const Duration(days: 365)),
+                          lastDate: now.add(const Duration(days: 365 * 5)),
+                        );
+                        if (picked != null) {
+                          setLocalState(() => selectedDate = picked);
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Date',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          suffixIcon: Icon(Icons.calendar_today, size: 18),
+                        ),
+                        child: Text(
+                          selectedDate != null
+                              ? '${selectedDate!.day.toString().padLeft(2, '0')}/${selectedDate!.month.toString().padLeft(2, '0')}/${selectedDate!.year}'
+                              : 'Sans date',
+                          style: TextStyle(
+                            color: selectedDate != null ? null : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Ajouter'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (text == null || text.isEmpty) return;
+    if (result != true || controller.text.trim().isEmpty) return;
+
+    String? isoDate;
+    if (isAppointments && selectedDate != null) {
+      isoDate =
+          '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+    }
 
     final ok = await _api.addItem(
       listName: widget.listKey,
-      text: text,
+      text: controller.text.trim(),
+      scheduledDate: isoDate,
     );
 
     if (ok) _reload();

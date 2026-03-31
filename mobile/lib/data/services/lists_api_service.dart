@@ -48,12 +48,17 @@ class ListsApiService {
   Future<bool> addItem({
     required String listName,
     required String text,
+    String? scheduledDate,
   }) async {
     final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.post(
       Uri.parse('$baseUrl/lists/$listName'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'item': text, 'source_transcript': null}),
+      body: jsonEncode({
+        'item': text,
+        'source_transcript': null,
+        'scheduled_date': scheduledDate,
+      }),
     );
 
     if (response.statusCode != 200) return false;
