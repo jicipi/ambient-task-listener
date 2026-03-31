@@ -202,6 +202,96 @@ class _ListDetailPageState extends State<ListDetailPage> {
     if (ok) _reload();
   }
 
+  Future<void> _editAppointmentDialog({
+    required String itemId,
+    required String currentText,
+    String? currentScheduledDate,
+  }) async {
+    final textController = TextEditingController(text: currentText);
+    DateTime? selectedDate;
+    if (currentScheduledDate != null) {
+      try {
+        selectedDate = DateTime.parse(currentScheduledDate);
+      } catch (_) {}
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              title: const Text('Modifier le rendez-vous'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: textController,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Titre'),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate ?? now,
+                        firstDate: now.subtract(const Duration(days: 365)),
+                        lastDate: now.add(const Duration(days: 365 * 5)),
+                      );
+                      if (picked != null) {
+                        setLocalState(() => selectedDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        suffixIcon: Icon(Icons.calendar_today, size: 18),
+                      ),
+                      child: Text(
+                        selectedDate != null
+                            ? '${selectedDate!.day.toString().padLeft(2, '0')}/${selectedDate!.month.toString().padLeft(2, '0')}/${selectedDate!.year}'
+                            : 'Sans date',
+                        style: TextStyle(
+                          color: selectedDate != null ? null : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Valider'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) return;
+
+    final newText = textController.text.trim();
+    if (newText.isNotEmpty) {
+      await _api.renameItem(
+        listName: widget.listKey,
+        itemId: itemId,
+        text: newText,
+      );
+    }
+    _reload();
+  }
+
   Future<void> _editItemDialog({
     required String itemId,
     required String currentText,
@@ -431,6 +521,14 @@ class _ListDetailPageState extends State<ListDetailPage> {
                             _toggleDone(itemId: itemId, newValue: v);
                           }
                         },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _editAppointmentDialog(
+                          itemId: itemId.toString(),
+                          currentText: text,
+                          currentScheduledDate: scheduledDate,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete),
