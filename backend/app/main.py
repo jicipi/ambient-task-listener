@@ -164,7 +164,12 @@ async def add_list_item(list_name: str, payload: ListItemInput) -> dict:
     if list_name not in VALID_LISTS:
         raise HTTPException(status_code=404, detail="Unknown list")
 
-    created = add_item(list_name, payload.item)
+    created = add_item(
+        list_name,
+        payload.item,
+        source_transcript=payload.source_transcript,
+        scheduled_date=payload.scheduled_date,
+    )
 
     if created:
         await notify_clients("update")

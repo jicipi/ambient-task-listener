@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 
 from app.cleaning import parse_shopping_item
 from app.unit_conversion import units_are_compatible, merge_quantities
+from app.date_parser import parse_french_date
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -90,16 +91,23 @@ def add_pending_item(action: dict) -> None:
 
     parsed = parse_shopping_item(item) if list_name == "shopping" and item else None
 
+    # Parse scheduled_date for appointments
+    scheduled_date: str | None = None
+    intent = action.get("intent")
+    if intent == "appointment_add" and transcript:
+        scheduled_date = parse_french_date(transcript)
+
     entry = {
         "id": str(uuid.uuid4()),
         "transcript": transcript,
-        "intent": action.get("intent"),
+        "intent": intent,
         "item": parsed["text"] if parsed else item,
         "quantity": parsed["quantity"] if parsed else None,
         "unit": parsed["unit"] if parsed else None,
         "list": list_name,
         "confidence": action.get("confidence"),
         "time_hint": action.get("time_hint"),
+        "scheduled_date": scheduled_date,
         "source": action.get("source"),
         "decision": action.get("decision"),
         "created_at": datetime.utcnow().isoformat(),
@@ -150,6 +158,7 @@ def approve_pending_item(
         quantity = override_quantity if override_quantity is not None else target.get("quantity")
         unit = override_unit if override_unit is not None else target.get("unit")
         transcript = target.get("transcript")
+        scheduled_date = target.get("scheduled_date")
 
         if not list_name or not item:
             return False
@@ -160,6 +169,7 @@ def approve_pending_item(
             transcript,
             quantity=quantity,
             unit=unit,
+            scheduled_date=scheduled_date,
         )
 
         _save_pending(remaining)
@@ -245,6 +255,7 @@ def add_item(
     source_transcript: str | None = None,
     quantity: int | None = None,
     unit: str | None = None,
+    scheduled_date: str | None = None,
 ) -> bool:
     if list_name not in FILES or not item:
         return False
@@ -352,6 +363,10 @@ def add_item(
                 # 5) Sinon, unités incompatibles → ne pas fusionner, continuer la recherche
                 continue
 
+        # For appointments: parse scheduled_date from transcript if not provided
+        if list_name == "appointments" and scheduled_date is None and source_transcript:
+            scheduled_date = parse_french_date(source_transcript)
+
         entry = {
             "id": str(uuid.uuid4()),
             "text": final_text,
@@ -360,6 +375,7 @@ def add_item(
             "category": category,
             "created_at": datetime.utcnow().isoformat(),
             "source_transcript": source_transcript,
+            "scheduled_date": scheduled_date if list_name == "appointments" else None,
             "done": False,
         }
 

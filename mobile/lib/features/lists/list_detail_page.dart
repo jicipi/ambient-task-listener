@@ -300,6 +300,87 @@ class _ListDetailPageState extends State<ListDetailPage> {
             return const Center(child: Text("Liste vide"));
           }
 
+          // Appointments: flat list sorted by scheduled_date (null last)
+          if (widget.listKey == "appointments") {
+            final sorted = List<Map<String, dynamic>>.from(items);
+            sorted.sort((a, b) {
+              final da = a["scheduled_date"] as String?;
+              final db = b["scheduled_date"] as String?;
+              if (da == null && db == null) return 0;
+              if (da == null) return 1;
+              if (db == null) return -1;
+              return da.compareTo(db);
+            });
+
+            return ListView(
+              children: sorted.map((item) {
+                final itemId = item["id"];
+                final text = item["text"] ?? "";
+                final done = item["done"] == true;
+                final scheduledDate = item["scheduled_date"] as String?;
+
+                String? dateDisplay;
+                if (scheduledDate != null) {
+                  try {
+                    final dt = DateTime.parse(scheduledDate);
+                    final day = dt.day.toString().padLeft(2, '0');
+                    final month = dt.month.toString().padLeft(2, '0');
+                    final year = dt.year.toString();
+                    dateDisplay = '$day/$month/$year';
+                  } catch (_) {
+                    dateDisplay = scheduledDate;
+                  }
+                }
+
+                return ListTile(
+                  leading: scheduledDate != null
+                      ? const Icon(Icons.event, color: Colors.blueGrey)
+                      : Checkbox(
+                          value: done,
+                          onChanged: (v) {
+                            if (v != null) {
+                              _toggleDone(itemId: itemId, newValue: v);
+                            }
+                          },
+                        ),
+                  title: Text(
+                    text,
+                    style: TextStyle(
+                      decoration: done ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  subtitle: dateDisplay != null
+                      ? Text(
+                          dateDisplay,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.blueGrey,
+                          ),
+                        )
+                      : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value: done,
+                        onChanged: (v) {
+                          if (v != null) {
+                            _toggleDone(itemId: itemId, newValue: v);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => _deleteItem(itemId: itemId),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          }
+
+          // Other lists: group by category
           final Map<String, List<Map<String, dynamic>>> grouped = {};
 
           for (final item in items) {

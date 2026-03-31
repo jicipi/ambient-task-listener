@@ -8,6 +8,7 @@ class TextInput(BaseModel):
 class ListItemInput(BaseModel):
     item: str
     source_transcript: str | None = None
+    scheduled_date: str | None = None
 
 
 class UpdateItemInput(BaseModel):

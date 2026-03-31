@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from app.llm_interpreter import interpret_with_llm
+from app.date_parser import parse_french_date
 
 
 NEGATION_PATTERNS = [
@@ -183,6 +184,11 @@ def build_result(
     needs_confirmation: bool = True,
     source: str = "rule",
 ) -> dict[str, Any]:
+    # Parse scheduled_date from time_hint for appointments
+    scheduled_date: str | None = None
+    if intent == "appointment_add" and time_hint:
+        scheduled_date = parse_french_date(time_hint)
+
     return {
         "transcript": transcript,
         "intent": intent,
@@ -191,6 +197,7 @@ def build_result(
         "list": list_name,
         "needs_confirmation": needs_confirmation,
         "time_hint": time_hint,
+        "scheduled_date": scheduled_date,
         "source": source,
         "decision": "add",
     }
@@ -415,6 +422,11 @@ def extract_action_with_fallback(text: str) -> dict[str, Any]:
         "idea_add": "ideas",
     }
 
+    # Parse scheduled_date from time_hint for appointments (LLM path)
+    scheduled_date: str | None = None
+    if intent == "appointment_add" and time_hint:
+        scheduled_date = parse_french_date(time_hint)
+
     return {
         "transcript": text,
         "intent": intent,
@@ -423,6 +435,7 @@ def extract_action_with_fallback(text: str) -> dict[str, Any]:
         "list": list_map.get(intent, "inbox"),
         "needs_confirmation": True,
         "time_hint": time_hint,
+        "scheduled_date": scheduled_date,
         "source": "llm",
         "decision": "confirm",
     }
