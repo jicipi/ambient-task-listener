@@ -115,9 +115,14 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
   Future<void> _showAddItemDialog() async {
     final controller = TextEditingController();
+    final quantityController = TextEditingController();
     DateTime? selectedDate;
+    String? selectedUnit;
 
     final isAppointments = widget.listKey == "appointments";
+    final isShopping = widget.listKey == "shopping";
+
+    const units = ['', 'kg', 'g', 'l', 'cl', 'ml', 'bouteille', 'boite', 'paquet'];
 
     final result = await showDialog<bool>(
       context: context,
@@ -132,8 +137,36 @@ class _ListDetailPageState extends State<ListDetailPage> {
                   TextField(
                     controller: controller,
                     autofocus: true,
-                    decoration: const InputDecoration(hintText: 'Nouvel item'),
+                    decoration: const InputDecoration(hintText: 'Nom'),
                   ),
+                  if (isShopping) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: quantityController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: 'Qté'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButtonFormField<String>(
+                            value: selectedUnit ?? '',
+                            decoration: const InputDecoration(labelText: 'Unité'),
+                            items: units.map((u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(u.isEmpty ? '—' : u),
+                            )).toList(),
+                            onChanged: (v) => setLocalState(() => selectedUnit = v == '' ? null : v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (isAppointments) ...[
                     const SizedBox(height: 12),
                     InkWell(
@@ -193,9 +226,19 @@ class _ListDetailPageState extends State<ListDetailPage> {
           '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
     }
 
+    String text = controller.text.trim();
+    if (isShopping) {
+      final qtyStr = quantityController.text.trim();
+      if (qtyStr.isNotEmpty) {
+        text = selectedUnit != null && selectedUnit!.isNotEmpty
+            ? '$qtyStr $selectedUnit $text'
+            : '$qtyStr $text';
+      }
+    }
+
     final ok = await _api.addItem(
       listName: widget.listKey,
-      text: controller.text.trim(),
+      text: text,
       scheduledDate: isoDate,
     );
 
@@ -653,25 +696,6 @@ class _ListDetailPageState extends State<ListDetailPage> {
                           style: TextStyle(
                             decoration: done ? TextDecoration.lineThrough : null,
                           ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editItemDialog(
-                                itemId: itemId,
-                                currentText: text,
-                                currentCategory: category,
-                                currentQuantity: quantity,
-                                currentUnit: unit?.toString(),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deleteItem(itemId: itemId),
-                            ),
-                          ],
                         ),
                       ),
                     );
