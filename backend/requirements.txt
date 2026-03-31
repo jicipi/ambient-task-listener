@@ -5,3 +5,4 @@ python-multipart
 sounddevice
 requests
 uvicorn[standard]
+pytest

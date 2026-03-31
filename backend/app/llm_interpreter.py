@@ -1,5 +1,8 @@
 import json
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.2"
@@ -74,13 +77,11 @@ def interpret_with_llm(text: str):
     }
 
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=5)
         response.raise_for_status()
 
         data = response.json()
         raw = data.get("response", "").strip()
-
-        #print("RAW OLLAMA RESPONSE:", raw)
 
         try:
             return json.loads(raw)
@@ -92,11 +93,14 @@ def interpret_with_llm(text: str):
                 "_raw": raw,
             }
 
+    except requests.exceptions.ConnectionError:
+        logger.warning("Ollama indisponible — fallback LLM ignoré")
+        return None
     except requests.exceptions.Timeout:
-        print("LLM timeout")
+        logger.warning("Ollama timeout (5s dépassé) — fallback LLM ignoré")
         return None
     except Exception as e:
-        print("LLM error:", e)
+        logger.warning("Ollama erreur inattendue : %s", e)
         return None
 
 

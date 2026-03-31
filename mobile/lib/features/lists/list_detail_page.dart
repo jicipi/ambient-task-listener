@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
+import '../../core/config/api_config.dart';
 
 class ListDetailPage extends StatefulWidget {
   final String listKey;
@@ -47,11 +48,12 @@ class _ListDetailPageState extends State<ListDetailPage> {
     super.dispose();
   }
 
-  void _connectWebSocket() {
+  void _connectWebSocket() async {
     _channel?.sink.close();
 
+    final baseUrl = await ApiConfig.getBaseUrl();
     _channel = WebSocketChannel.connect(
-      Uri.parse('ws://localhost:8000/ws'),
+      Uri.parse(ApiConfig.toWsUrl(baseUrl)),
     );
 
     _channel!.stream.listen(
@@ -150,14 +152,21 @@ class _ListDetailPageState extends State<ListDetailPage> {
     if (ok) _reload();
   }
 
-  /// 🔥 NOUVELLE VERSION AVEC CATÉGORIE
   Future<void> _editItemDialog({
     required String itemId,
     required String currentText,
     required String currentCategory,
+    dynamic currentQuantity,
+    String? currentUnit,
   }) async {
     final textController = TextEditingController(text: currentText);
+    final quantityController = TextEditingController(
+      text: currentQuantity != null ? currentQuantity.toString() : '',
+    );
+    String? selectedUnit = currentUnit;
     String selectedCategory = currentCategory;
+
+    const units = ['', 'kg', 'g', 'l', 'cl', 'ml', 'bouteille', 'boite', 'paquet'];
 
     final result = await showDialog<bool>(
       context: context,
@@ -170,25 +179,53 @@ class _ListDetailPageState extends State<ListDetailPage> {
               TextField(
                 controller: textController,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: "Texte"),
+                decoration: const InputDecoration(labelText: "Nom"),
               ),
-              const SizedBox(height: 12),
-              if (widget.listKey == "shopping")
-                DropdownButtonFormField<String>(
-                  value: selectedCategory,
-                  decoration: const InputDecoration(labelText: "Catégorie"),
-                  items: ListDetailPage.shoppingCategories.map((category) {
-                    return DropdownMenuItem(
-                      value: category,
-                      child: Text(category),
+              if (widget.listKey == "shopping") ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: quantityController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: "Qté"),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: StatefulBuilder(
+                        builder: (context, setLocalState) {
+                          return DropdownButtonFormField<String>(
+                            value: selectedUnit ?? '',
+                            decoration: const InputDecoration(labelText: "Unité"),
+                            items: units.map((u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(u.isEmpty ? '—' : u),
+                            )).toList(),
+                            onChanged: (v) => setLocalState(() => selectedUnit = v == '' ? null : v),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                StatefulBuilder(
+                  builder: (context, setLocalState) {
+                    return DropdownButtonFormField<String>(
+                      value: selectedCategory,
+                      decoration: const InputDecoration(labelText: "Catégorie"),
+                      items: ListDetailPage.shoppingCategories.map((c) =>
+                        DropdownMenuItem(value: c, child: Text(c)),
+                      ).toList(),
+                      onChanged: (v) { if (v != null) setLocalState(() => selectedCategory = v); },
                     );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      selectedCategory = value;
-                    }
                   },
                 ),
+              ],
             ],
           ),
           actions: [
@@ -208,28 +245,34 @@ class _ListDetailPageState extends State<ListDetailPage> {
     if (result != true) return;
 
     final newText = textController.text.trim();
-    bool ok = true;
+    if (newText.isEmpty) { _reload(); return; }
 
-    if (newText.isNotEmpty && newText != currentText) {
-      ok = ok &&
-          await _api.renameItem(
-            listName: widget.listKey,
-            itemId: itemId,
-            text: newText,
-          );
+    // Construire la chaîne complète pour que le backend parse quantité + unité
+    String textToSend = newText;
+    if (widget.listKey == "shopping") {
+      final qtyStr = quantityController.text.trim();
+      if (qtyStr.isNotEmpty) {
+        textToSend = selectedUnit != null && selectedUnit!.isNotEmpty
+            ? '$qtyStr $selectedUnit $newText'
+            : '$qtyStr $newText';
+      }
     }
 
-    if (widget.listKey == "shopping" &&
-        selectedCategory != currentCategory) {
-      ok = ok &&
-          await _api.updateItemCategory(
-            listName: widget.listKey,
-            itemId: itemId,
-            category: selectedCategory,
-          );
+    await _api.renameItem(
+      listName: widget.listKey,
+      itemId: itemId,
+      text: textToSend,
+    );
+
+    if (widget.listKey == "shopping" && selectedCategory != currentCategory) {
+      await _api.updateItemCategory(
+        listName: widget.listKey,
+        itemId: itemId,
+        category: selectedCategory,
+      );
     }
 
-    if (ok) _reload();
+    _reload();
   }
 
   @override
@@ -326,6 +369,8 @@ class _ListDetailPageState extends State<ListDetailPage> {
                               itemId: itemId,
                               currentText: text,
                               currentCategory: category,
+                              currentQuantity: quantity,
+                              currentUnit: unit?.toString(),
                             ),
                           ),
                           IconButton(

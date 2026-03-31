@@ -4,9 +4,8 @@ import '../../core/config/api_config.dart';
 
 class ListsApiService {
   Future<Map<String, dynamic>> fetchAllLists() async {
-    final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/lists'),
-    );
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.get(Uri.parse('$baseUrl/lists'));
 
     if (response.statusCode != 200) {
       throw Exception('Failed to load lists');
@@ -20,20 +19,14 @@ class ListsApiService {
     required String itemId,
     required bool done,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.patch(
-      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'done': done,
-      }),
+      Uri.parse('$baseUrl/lists/$listName/item/$itemId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'done': done}),
     );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
-
+    if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['updated'] == true;
   }
@@ -42,14 +35,12 @@ class ListsApiService {
     required String listName,
     required String itemId,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.delete(
-      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId'),
+      Uri.parse('$baseUrl/lists/$listName/item/$itemId'),
     );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
-
+    if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['deleted'] == true;
   }
@@ -58,21 +49,14 @@ class ListsApiService {
     required String listName,
     required String text,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/lists/$listName'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'item': text,
-        'source_transcript': null,
-      }),
+      Uri.parse('$baseUrl/lists/$listName'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'item': text, 'source_transcript': null}),
     );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
-
+    if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['added'] == true;
   }
@@ -82,20 +66,14 @@ class ListsApiService {
     required String itemId,
     required String text,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.patch(
-      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId/rename'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'text': text,
-      }),
+      Uri.parse('$baseUrl/lists/$listName/item/$itemId/rename'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'text': text}),
     );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
-
+    if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['updated'] == true;
   }
@@ -105,28 +83,21 @@ class ListsApiService {
     required String itemId,
     required String category,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.patch(
-      Uri.parse('${ApiConfig.baseUrl}/lists/$listName/item/$itemId/category'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'category': category,
-      }),
+      Uri.parse('$baseUrl/lists/$listName/item/$itemId/category'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'category': category}),
     );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
-
+    if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['updated'] == true;
   }
 
   Future<List<Map<String, dynamic>>> fetchPendingItems() async {
-    final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/pending'),
-    );
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.get(Uri.parse('$baseUrl/pending'));
 
     if (response.statusCode != 200) {
       throw Exception('Erreur lors du chargement des éléments à confirmer');
@@ -143,11 +114,10 @@ class ListsApiService {
     int? quantity,
     String? unit,
   }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/pending/$itemId/approve'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      Uri.parse('$baseUrl/pending/$itemId/approve'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'text': text,
         'list': listName,
@@ -160,9 +130,8 @@ class ListsApiService {
   }
 
   Future<bool> rejectPendingItem(String itemId) async {
-    final response = await http.delete(
-      Uri.parse('${ApiConfig.baseUrl}/pending/$itemId'),
-    );
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.delete(Uri.parse('$baseUrl/pending/$itemId'));
     return response.statusCode == 200;
   }
 
@@ -173,14 +142,11 @@ class ListsApiService {
 
   Future<Map<String, int>> fetchPendingCountsByList() async {
     final items = await fetchPendingItems();
-
     final Map<String, int> counts = {};
-
     for (final item in items) {
       final listName = (item['list'] ?? 'inbox').toString();
       counts[listName] = (counts[listName] ?? 0) + 1;
     }
-
     return counts;
   }
 }

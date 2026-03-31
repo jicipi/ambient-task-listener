@@ -3,6 +3,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
 import '../lists/list_detail_page.dart';
 import '../pending/pending_page.dart';
+import '../settings/settings_page.dart';
+import '../../core/config/api_config.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -40,11 +42,12 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _connectWebSocket() {
+  void _connectWebSocket() async {
     _channel?.sink.close();
 
+    final baseUrl = await ApiConfig.getBaseUrl();
     _channel = WebSocketChannel.connect(
-      Uri.parse('ws://localhost:8000/ws'),
+      Uri.parse(ApiConfig.toWsUrl(baseUrl)),
     );
 
     _channel!.stream.listen(
@@ -112,6 +115,16 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('Home'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+              _connectWebSocket();
+              _reload();
+            },
+          ),
           FutureBuilder<int>(
             future: _pendingCountFuture,
             builder: (context, snapshot) {

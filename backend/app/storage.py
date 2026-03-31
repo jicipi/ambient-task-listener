@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 import json
+import threading
 from pathlib import Path
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -21,6 +22,10 @@ FILES = {
     "appointments": DATA_DIR / "appointments.json",
     "ideas": DATA_DIR / "ideas.json",
 }
+
+# RLock (reentrant) : certaines fonctions publiques s'appellent entre elles
+# (ex: approve_pending_item → add_item)
+_lock = threading.RLock()
 
 STOP_ITEMS = {
     "oui",
@@ -78,8 +83,6 @@ def get_pending_items() -> list[dict]:
 
 
 def add_pending_item(action: dict) -> None:
-    data = _load_pending()
-
     list_name = action.get("list")
     item = action.get("item")
     transcript = action.get("transcript")
@@ -101,19 +104,22 @@ def add_pending_item(action: dict) -> None:
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    data.append(entry)
-    _save_pending(data)
+    with _lock:
+        data = _load_pending()
+        data.append(entry)
+        _save_pending(data)
 
 
 def reject_pending_item(item_id: str) -> bool:
-    data = _load_pending()
-    new_data = [entry for entry in data if entry.get("id") != item_id]
+    with _lock:
+        data = _load_pending()
+        new_data = [entry for entry in data if entry.get("id") != item_id]
 
-    if len(new_data) == len(data):
-        return False
+        if len(new_data) == len(data):
+            return False
 
-    _save_pending(new_data)
-    return True
+        _save_pending(new_data)
+        return True
 
 
 def approve_pending_item(
@@ -123,39 +129,40 @@ def approve_pending_item(
     override_quantity: int | None = None,
     override_unit: str | None = None,
 ) -> bool:
-    data = _load_pending()
+    with _lock:
+        data = _load_pending()
 
-    target = None
-    remaining = []
+        target = None
+        remaining = []
 
-    for entry in data:
-        if entry.get("id") == item_id:
-            target = entry
-        else:
-            remaining.append(entry)
+        for entry in data:
+            if entry.get("id") == item_id:
+                target = entry
+            else:
+                remaining.append(entry)
 
-    if target is None:
-        return False
+        if target is None:
+            return False
 
-    list_name = override_list or target.get("list")
-    item = override_text or target.get("item")
-    quantity = override_quantity if override_quantity is not None else target.get("quantity")
-    unit = override_unit if override_unit is not None else target.get("unit")
-    transcript = target.get("transcript")
+        list_name = override_list or target.get("list")
+        item = override_text or target.get("item")
+        quantity = override_quantity if override_quantity is not None else target.get("quantity")
+        unit = override_unit if override_unit is not None else target.get("unit")
+        transcript = target.get("transcript")
 
-    if not list_name or not item:
-        return False
+        if not list_name or not item:
+            return False
 
-    add_item(
-        list_name,
-        item,
-        transcript,
-        quantity=quantity,
-        unit=unit,
-    )
+        add_item(
+            list_name,
+            item,
+            transcript,
+            quantity=quantity,
+            unit=unit,
+        )
 
-    _save_pending(remaining)
-    return True
+        _save_pending(remaining)
+        return True
 
 
 # =========================
@@ -257,103 +264,104 @@ def add_item(
         unit = unit if unit is not None else parsed["unit"]
         category = parsed.get("category")
 
-    data = _load_list(list_name)
-    canonical_item = _canonicalize_for_dedupe(list_name, final_text)
+    with _lock:
+        data = _load_list(list_name)
+        canonical_item = _canonicalize_for_dedupe(list_name, final_text)
 
-    for existing in data:
-        existing_text = existing.get("text") or existing.get("item") or ""
-        existing_canonical = _canonicalize_for_dedupe(list_name, existing_text)
+        for existing in data:
+            existing_text = existing.get("text") or existing.get("item") or ""
+            existing_canonical = _canonicalize_for_dedupe(list_name, existing_text)
 
-        if existing_canonical != canonical_item:
-            continue
+            if existing_canonical != canonical_item:
+                continue
 
-        if list_name == "shopping":
-            existing_quantity = existing.get("quantity")
-            existing_unit = existing.get("unit")
+            if list_name == "shopping":
+                existing_quantity = existing.get("quantity")
+                existing_unit = existing.get("unit")
 
-            units_compatible = (
-                (existing_unit is None and unit is None)
-                or (existing_unit == unit)
-            )
+                units_compatible = (
+                    (existing_unit is None and unit is None)
+                    or (existing_unit == unit)
+                )
 
-            # 1) Fusion classique : deux quantités, unités strictement compatibles
-            if (
-                quantity is not None
-                and existing_quantity is not None
-                and units_compatible
-            ):
-                existing["quantity"] = existing_quantity + quantity
-                existing["text"] = final_text
+                # 1) Fusion classique : deux quantités, unités strictement compatibles
+                if (
+                    quantity is not None
+                    and existing_quantity is not None
+                    and units_compatible
+                ):
+                    existing["quantity"] = existing_quantity + quantity
+                    existing["text"] = final_text
 
-                if category:
-                    existing["category"] = category
-                    learn_category(final_text, category)
+                    if category:
+                        existing["category"] = category
+                        learn_category(final_text, category)
 
-                _save_list(list_name, data)
-                return True
+                    _save_list(list_name, data)
+                    return True
 
-            # 2) Enrichissement : ancien sans quantité, nouveau avec quantité,
-            # seulement si unités compatibles
-            if (
-                quantity is not None
-                and existing_quantity is None
-                and units_compatible
-            ):
-                existing["text"] = final_text
-                existing["quantity"] = quantity
-                existing["unit"] = unit
+                # 2) Enrichissement : ancien sans quantité, nouveau avec quantité,
+                # seulement si unités compatibles
+                if (
+                    quantity is not None
+                    and existing_quantity is None
+                    and units_compatible
+                ):
+                    existing["text"] = final_text
+                    existing["quantity"] = quantity
+                    existing["unit"] = unit
 
-                if category:
-                    existing["category"] = category
-                    learn_category(final_text, category)
+                    if category:
+                        existing["category"] = category
+                        learn_category(final_text, category)
 
-                _save_list(list_name, data)
-                return True
+                    _save_list(list_name, data)
+                    return True
 
-            # 3) Nouveau sans quantité, ancien avec quantité ET sans unité
-            # ex: "poires" + "10 poires" => on garde 10 poires
-            if (
-                quantity is None
-                and existing_quantity is not None
-                and existing_unit is None
-            ):
-                existing["text"] = final_text
+                # 3) Nouveau sans quantité, ancien avec quantité ET sans unité
+                # ex: "poires" + "10 poires" => on garde 10 poires
+                if (
+                    quantity is None
+                    and existing_quantity is not None
+                    and existing_unit is None
+                ):
+                    existing["text"] = final_text
 
-                if category:
-                    existing["category"] = category
-                    learn_category(final_text, category)
+                    if category:
+                        existing["category"] = category
+                        learn_category(final_text, category)
 
-                _save_list(list_name, data)
-                return True
+                    _save_list(list_name, data)
+                    return True
 
-            # 4) Deux items sans quantité
-            if quantity is None and existing_quantity is None:
-                existing["text"] = final_text
+                # 4) Deux items sans quantité
+                if quantity is None and existing_quantity is None:
+                    existing["text"] = final_text
 
-                if category:
-                    existing["category"] = category
-                    learn_category(final_text, category)
+                    if category:
+                        existing["category"] = category
+                        learn_category(final_text, category)
 
-                _save_list(list_name, data)
-                return True
+                    _save_list(list_name, data)
+                    return True
 
-            # 5) Sinon, unités incompatibles → ne pas fusionner, continuer la recherche
-            continue
+                # 5) Sinon, unités incompatibles → ne pas fusionner, continuer la recherche
+                continue
 
-    entry = {
-        "id": str(uuid.uuid4()),
-        "text": final_text,
-        "quantity": quantity,
-        "unit": unit,
-        "category": category,
-        "created_at": datetime.utcnow().isoformat(),
-        "source_transcript": source_transcript,
-        "done": False,
-    }
+        entry = {
+            "id": str(uuid.uuid4()),
+            "text": final_text,
+            "quantity": quantity,
+            "unit": unit,
+            "category": category,
+            "created_at": datetime.utcnow().isoformat(),
+            "source_transcript": source_transcript,
+            "done": False,
+        }
 
-    data.append(entry)
-    _save_list(list_name, data)
-    return True
+        data.append(entry)
+        _save_list(list_name, data)
+        return True
 
 
 # =========================
@@ -374,31 +382,29 @@ def delete_item(list_name: str, item_id: str) -> bool:
     if list_name not in FILES:
         return False
 
-    data = _load_list(list_name)
+    with _lock:
+        data = _load_list(list_name)
+        new_data = [entry for entry in data if entry.get("id") != item_id]
 
-    new_data = [
-        entry for entry in data
-        if entry.get("id") != item_id
-    ]
+        if len(new_data) == len(data):
+            return False
 
-    if len(new_data) == len(data):
-        return False
-
-    _save_list(list_name, new_data)
-    return True
+        _save_list(list_name, new_data)
+        return True
 
 
 def update_item_done(list_name: str, item_id: str, done: bool) -> bool:
     if list_name not in FILES:
         return False
 
-    data = _load_list(list_name)
+    with _lock:
+        data = _load_list(list_name)
 
-    for entry in data:
-        if entry.get("id") == item_id:
-            entry["done"] = done
-            _save_list(list_name, data)
-            return True
+        for entry in data:
+            if entry.get("id") == item_id:
+                entry["done"] = done
+                _save_list(list_name, data)
+                return True
 
     return False
 
@@ -417,19 +423,11 @@ def rename_item(list_name: str, item_id: str, text: str) -> bool:
 
         for entry in data:
             if entry.get("id") == item_id:
-                original_text = entry.get("text", "")
-
-                if (
-                    original_text
-                    and _normalize_item(original_text) != _normalize_item(corrected_text)
-                ):
-                    learn_synonym(original_text, corrected_text)
-
                 return update_shopping_item(
                     item_id=item_id,
                     text=corrected_text,
-                    quantity=entry.get("quantity"),
-                    unit=entry.get("unit"),
+                    quantity=None,
+                    unit=None,
                     category=entry.get("category"),
                 )
         return False
@@ -589,43 +587,44 @@ def update_shopping_item(
         category if category is not None else parsed.get("category")
     )
 
-    data = _load_list("shopping")
-    target = None
+    with _lock:
+        data = _load_list("shopping")
+        target = None
 
-    for entry in data:
-        if entry.get("id") == item_id:
-            target = entry
-            break
+        for entry in data:
+            if entry.get("id") == item_id:
+                target = entry
+                break
 
-    if target is None:
-        return False
+        if target is None:
+            return False
 
-    # on met à jour l'item cible
-    target["text"] = final_text
-    target["quantity"] = final_quantity
-    target["unit"] = final_unit
-    target["category"] = final_category
+        # on met à jour l'item cible
+        target["text"] = final_text
+        target["quantity"] = final_quantity
+        target["unit"] = final_unit
+        target["category"] = final_category
 
-    # apprentissage catégorie
-    if final_text and final_category != "autres":
-        learn_category(final_text, final_category)
+        # apprentissage catégorie
+        if final_text and final_category != "autres":
+            learn_category(final_text, final_category)
 
-    # tentative de fusion avec un autre item compatible
-    duplicate = None
-    for entry in data:
-        if entry.get("id") == item_id:
-            continue
-        if _shopping_items_can_merge(target, entry):
-            duplicate = entry
-            break
+        # tentative de fusion avec un autre item compatible
+        duplicate = None
+        for entry in data:
+            if entry.get("id") == item_id:
+                continue
+            if _shopping_items_can_merge(target, entry):
+                duplicate = entry
+                break
 
-    if duplicate is not None:
-        # on fusionne le duplicate dans target, puis on supprime duplicate
-        _merge_shopping_entries(target, duplicate)
-        data = [entry for entry in data if entry.get("id") != duplicate.get("id")]
+        if duplicate is not None:
+            # on fusionne le duplicate dans target, puis on supprime duplicate
+            _merge_shopping_entries(target, duplicate)
+            data = [entry for entry in data if entry.get("id") != duplicate.get("id")]
 
-    _save_list("shopping", data)
-    return True
+        _save_list("shopping", data)
+        return True
 
 
 def apply_synonym(text: str) -> str:

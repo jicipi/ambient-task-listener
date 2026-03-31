@@ -195,15 +195,18 @@ def parse_shopping_item(text: str) -> dict:
     unit = None
     item_tokens = tokens[:]
 
-    # quantité en premier mot
+    # quantité en premier mot (entier, décimal point ou virgule française)
     if item_tokens:
         first = item_tokens[0]
-        if first.isdigit():
-            quantity = int(first)
+        first_norm = first.replace(',', '.')
+        try:
+            val = float(first_norm)
+            quantity = int(val) if val == int(val) else round(val, 4)
             item_tokens = item_tokens[1:]
-        elif first in word_to_number:
-            quantity = word_to_number[first]
-            item_tokens = item_tokens[1:]
+        except ValueError:
+            if first in word_to_number:
+                quantity = word_to_number[first]
+                item_tokens = item_tokens[1:]
 
     # unité en mot suivant
     if item_tokens:
