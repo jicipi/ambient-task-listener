@@ -81,7 +81,7 @@ Objectif : améliorer la fiabilité de l'extraction d'actions.
 - [~] fusion intelligente des quantités (édition + renommage + ajout, hors conversion d'unités)
 
 ## Résidus à compléter en priorité
-- [ ] gestion avancée des dates et échéances (les appointments sont inutilisables sans ça)
+- [x] gestion avancée des dates et échéances — parsing français stdlib-only, affichage mobile trié
 - [ ] résolution d'ambiguïtés phonétiques (pompier / plombier)
 - [x] conversion d'unités (g ↔ kg, ml ↔ l, cl) — fusion cross-unité avec sélection unité lisible
 - [x] synonymes métier (patates → pommes de terre)
