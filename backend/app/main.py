@@ -27,8 +27,9 @@ class NotifyPayload(BaseModel):
 class ApprovePendingPayload(BaseModel):
     text: str | None = None
     list: str | None = None
-    quantity: int | None = None
+    quantity: float | None = None
     unit: str | None = None
+    scheduled_date: str | None = None
 
 app = FastAPI(title="Ambient Task Listener Backend")
 
@@ -93,6 +94,7 @@ async def approve_pending(item_id: str, payload: ApprovePendingPayload | None = 
         override_list=payload.list if payload else None,
         override_quantity=payload.quantity if payload else None,
         override_unit=payload.unit if payload else None,
+        override_scheduled_date=payload.scheduled_date if payload else None,
     )
 
     if not ok:

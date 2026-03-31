@@ -58,7 +58,7 @@ class ListsApiService {
 
     if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data['added'] == true;
+    return data['created'] == true;
   }
 
   Future<bool> renameItem({
@@ -111,8 +111,9 @@ class ListsApiService {
     String itemId, {
     String? text,
     String? listName,
-    int? quantity,
+    double? quantity,
     String? unit,
+    String? scheduledDate,
   }) async {
     final baseUrl = await ApiConfig.getBaseUrl();
     final response = await http.post(
@@ -123,6 +124,7 @@ class ListsApiService {
         'list': listName,
         'quantity': quantity,
         'unit': unit,
+        'scheduled_date': scheduledDate,
       }),
     );
 

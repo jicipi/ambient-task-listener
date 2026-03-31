@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/services/lists_api_service.dart';
+import '../lists/list_detail_page.dart';
 
 class PendingPage extends StatefulWidget {
   const PendingPage({super.key});
@@ -28,8 +29,9 @@ class _PendingPageState extends State<PendingPage> {
     String itemId,
     String text,
     String list,
-    int? quantity,
+    double? quantity,
     String? unit,
+    String? scheduledDate,
   ) async {
     final ok = await _api.approvePendingItem(
       itemId,
@@ -37,6 +39,7 @@ class _PendingPageState extends State<PendingPage> {
       listName: list,
       quantity: quantity,
       unit: unit,
+      scheduledDate: scheduledDate,
     );
 
     if (ok) {
@@ -111,8 +114,9 @@ class _PendingCard extends StatefulWidget {
     String itemId,
     String text,
     String list,
-    int? quantity,
+    double? quantity,
     String? unit,
+    String? scheduledDate,
   ) onApprove;
   final Future<void> Function(String itemId) onReject;
 
@@ -131,8 +135,10 @@ class _PendingCardState extends State<_PendingCard> {
   late final TextEditingController _quantityController;
   late String _selectedList;
   String? _selectedUnit;
+  String? _selectedCategory;
+  DateTime? _scheduledDate;
 
-  final List<String> _lists = const [
+  static const _lists = [
     'shopping',
     'todo',
     'todo_pro',
@@ -140,16 +146,7 @@ class _PendingCardState extends State<_PendingCard> {
     'ideas',
   ];
 
-  final List<String> _units = const [
-    'kg',
-    'g',
-    'l',
-    'ml',
-    'cl',
-    'boite',
-    'paquet',
-    'bouteille',
-  ];
+  static const _units = ['', 'kg', 'g', 'l', 'cl', 'ml', 'bouteille', 'boite', 'paquet'];
 
   @override
   void initState() {
@@ -161,7 +158,16 @@ class _PendingCardState extends State<_PendingCard> {
       text: widget.item["quantity"]?.toString() ?? '',
     );
     _selectedList = (widget.item["list"] ?? "ideas").toString();
-    _selectedUnit = widget.item["unit"]?.toString();
+    final rawUnit = widget.item["unit"]?.toString() ?? '';
+    _selectedUnit = _units.contains(rawUnit) ? rawUnit : '';
+    _selectedCategory = widget.item["category"]?.toString();
+
+    final rawDate = widget.item["scheduled_date"] as String?;
+    if (rawDate != null) {
+      try {
+        _scheduledDate = DateTime.parse(rawDate);
+      } catch (_) {}
+    }
   }
 
   @override
@@ -171,11 +177,35 @@ class _PendingCardState extends State<_PendingCard> {
     super.dispose();
   }
 
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDate ?? now,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
+    );
+    if (picked != null) {
+      setState(() => _scheduledDate = picked);
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    return '$d/$m/${dt.year}';
+  }
+
+  String? get _isoDate =>
+      _scheduledDate != null
+          ? '${_scheduledDate!.year}-${_scheduledDate!.month.toString().padLeft(2, '0')}-${_scheduledDate!.day.toString().padLeft(2, '0')}'
+          : null;
+
   @override
   Widget build(BuildContext context) {
     final itemId = (widget.item["id"] ?? "").toString();
-    final intent = (widget.item["intent"] ?? "").toString();
     final transcript = (widget.item["transcript"] ?? "").toString();
+    final intent = (widget.item["intent"] ?? "").toString();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -184,103 +214,168 @@ class _PendingCardState extends State<_PendingCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Transcript (context for the user)
+            if (transcript.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.mic, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        transcript,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ),
+                    if (intent.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          intent,
+                          style: const TextStyle(fontSize: 10, color: Colors.blue),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+            // Texte proposé
             TextField(
               controller: _textController,
               decoration: const InputDecoration(
-                labelText: 'Texte proposé',
+                labelText: 'Texte',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
             ),
             const SizedBox(height: 8),
+
+            // Liste
             DropdownButtonFormField<String>(
               value: _selectedList,
               decoration: const InputDecoration(
                 labelText: 'Liste',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
-              items: _lists.map((list) {
-                return DropdownMenuItem<String>(
-                  value: list,
-                  child: Text(list),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedList = value;
-                  });
-                }
+              items: _lists.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _selectedList = v);
               },
             ),
             const SizedBox(height: 8),
-            if (_selectedList == 'shopping')
+
+            // Shopping: quantité + unité + catégorie
+            if (_selectedList == 'shopping') ...[
               Row(
                 children: [
                   Expanded(
+                    flex: 2,
                     child: TextField(
                       controller: _quantityController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
-                        labelText: 'Quantité',
+                        labelText: 'Qté',
                         border: OutlineInputBorder(),
+                        isDense: true,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
+                    flex: 3,
                     child: DropdownButtonFormField<String>(
-                      value: _selectedUnit,
+                      value: _selectedUnit ?? '',
                       decoration: const InputDecoration(
                         labelText: 'Unité',
                         border: OutlineInputBorder(),
+                        isDense: true,
                       ),
-                      items: _units.map((unit) {
-                        return DropdownMenuItem<String>(
-                          value: unit,
-                          child: Text(unit),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedUnit = value;
-                        });
-                      },
+                      items: _units.map((u) => DropdownMenuItem(
+                        value: u,
+                        child: Text(u.isEmpty ? '—' : u),
+                      )).toList(),
+                      onChanged: (v) => setState(() => _selectedUnit = v),
                     ),
                   ),
                 ],
               ),
-            if (_selectedList == 'shopping')
               const SizedBox(height: 8),
-            Text('Intent: $intent'),
-            Text('Liste actuelle: $_selectedList'),
-            const SizedBox(height: 6),
-            Text(
-              'Transcript: $transcript',
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: ListDetailPage.shoppingCategories.contains(_selectedCategory)
+                    ? _selectedCategory
+                    : 'autres',
+                decoration: const InputDecoration(
+                  labelText: 'Catégorie',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: ListDetailPage.shoppingCategories
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) { if (v != null) setState(() => _selectedCategory = v); },
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Appointments: date
+            if (_selectedList == 'appointments') ...[
+              InkWell(
+                onTap: _pickDate,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Date',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    suffixIcon: Icon(Icons.calendar_today, size: 18),
+                  ),
+                  child: Text(
+                    _scheduledDate != null ? _formatDate(_scheduledDate!) : 'Sans date',
+                    style: TextStyle(
+                      color: _scheduledDate != null ? null : Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Actions
             Row(
               children: [
                 FilledButton.icon(
                   onPressed: itemId.isEmpty
                       ? null
-                      : () => widget.onApprove(
+                      : () {
+                          final qty = double.tryParse(
+                            _quantityController.text.trim().replaceAll(',', '.'),
+                          );
+                          final unit = (_selectedUnit?.isEmpty ?? true) ? null : _selectedUnit;
+                          widget.onApprove(
                             itemId,
                             _textController.text,
                             _selectedList,
-                            int.tryParse(_quantityController.text),
-                            _selectedUnit,
-                          ),
+                            qty,
+                            unit,
+                            _isoDate,
+                          );
+                        },
                   icon: const Icon(Icons.check),
                   label: const Text('Valider'),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
-                  onPressed: itemId.isEmpty
-                      ? null
-                      : () => widget.onReject(itemId),
+                  onPressed: itemId.isEmpty ? null : () => widget.onReject(itemId),
                   icon: const Icon(Icons.close),
                   label: const Text('Refuser'),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                 ),
               ],
             ),

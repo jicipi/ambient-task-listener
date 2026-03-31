@@ -135,8 +135,9 @@ def approve_pending_item(
     item_id: str,
     override_text: str | None = None,
     override_list: str | None = None,
-    override_quantity: int | None = None,
+    override_quantity: float | None = None,
     override_unit: str | None = None,
+    override_scheduled_date: str | None = None,
 ) -> bool:
     with _lock:
         data = _load_pending()
@@ -158,7 +159,7 @@ def approve_pending_item(
         quantity = override_quantity if override_quantity is not None else target.get("quantity")
         unit = override_unit if override_unit is not None else target.get("unit")
         transcript = target.get("transcript")
-        scheduled_date = target.get("scheduled_date")
+        scheduled_date = override_scheduled_date if override_scheduled_date is not None else target.get("scheduled_date")
 
         if not list_name or not item:
             return False
