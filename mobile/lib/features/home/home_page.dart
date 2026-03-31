@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
+import '../../core/services/notification_service.dart';
 import '../lists/list_detail_page.dart';
 import '../pending/pending_page.dart';
 import '../settings/settings_page.dart';
@@ -26,6 +27,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _reload();
     _connectWebSocket();
+    NotificationService.requestPermissions();
   }
 
   @override
@@ -35,8 +37,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _reload() {
+    final future = _apiService.fetchAllLists();
+    future.then((data) {
+      final rawApts = (data["appointments"] as List?) ?? [];
+      final apts = List<Map<String, dynamic>>.from(rawApts);
+      NotificationService.scheduleAppointmentNotifications(apts);
+    });
     setState(() {
-      _listsFuture = _apiService.fetchAllLists();
+      _listsFuture = future;
       _pendingCountFuture = _apiService.fetchPendingCount();
       _pendingCountsFuture = _apiService.fetchPendingCountsByList();
     });
