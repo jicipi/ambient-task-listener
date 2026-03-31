@@ -8,6 +8,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 
 from app.cleaning import parse_shopping_item
+from app.unit_conversion import units_are_compatible, merge_quantities
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -279,18 +280,21 @@ def add_item(
                 existing_quantity = existing.get("quantity")
                 existing_unit = existing.get("unit")
 
-                units_compatible = (
-                    (existing_unit is None and unit is None)
-                    or (existing_unit == unit)
-                )
+                units_compatible = units_are_compatible(existing_unit, unit)
 
-                # 1) Fusion classique : deux quantités, unités strictement compatibles
+                # 1) Fusion classique : deux quantités, unités compatibles
                 if (
                     quantity is not None
                     and existing_quantity is not None
                     and units_compatible
                 ):
-                    existing["quantity"] = existing_quantity + quantity
+                    merged = merge_quantities(existing_quantity, existing_unit, quantity, unit)
+                    if merged is not None:
+                        new_qty, new_unit = merged
+                        existing["quantity"] = new_qty
+                        existing["unit"] = new_unit
+                    else:
+                        existing["quantity"] = existing_quantity + quantity
                     existing["text"] = final_text
 
                     if category:
@@ -523,10 +527,7 @@ def _shopping_items_can_merge(a: dict, b: dict) -> bool:
     unit_a = a.get("unit")
     unit_b = b.get("unit")
 
-    return (
-        (unit_a is None and unit_b is None)
-        or (unit_a == unit_b)
-    )
+    return units_are_compatible(unit_a, unit_b)
 
 
 def _merge_shopping_entries(target: dict, source: dict) -> None:
@@ -536,20 +537,19 @@ def _merge_shopping_entries(target: dict, source: dict) -> None:
     unit_target = target.get("unit")
     unit_source = source.get("unit")
 
-    units_compatible = (
-        (unit_target is None and unit_source is None)
-        or (unit_target == unit_source)
-    )
-
     # quantité
-    if qty_target is not None and qty_source is not None and units_compatible:
-        target["quantity"] = qty_target + qty_source
+    if qty_target is not None and qty_source is not None:
+        merged = merge_quantities(qty_target, unit_target, qty_source, unit_source)
+        if merged is not None:
+            new_qty, new_unit = merged
+            target["quantity"] = new_qty
+            target["unit"] = new_unit
+        # else: incompatible units, keep target as-is
     elif qty_target is None and qty_source is not None:
         target["quantity"] = qty_source
-
-    # unité
-    if unit_target is None and unit_source is not None:
-        target["unit"] = unit_source
+        # unité
+        if unit_target is None and unit_source is not None:
+            target["unit"] = unit_source
 
     # catégorie
     cat_target = _normalize_category(target.get("category"))

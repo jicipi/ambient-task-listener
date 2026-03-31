@@ -230,3 +230,56 @@ class TestQuantityFusion:
         assert len(data) == 2, (
             "Items with incompatible units must NOT be merged."
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression 5 — Cross-unit fusion: 500g + 1kg → 1.5 kg
+# ---------------------------------------------------------------------------
+
+class TestCrossUnitFusion:
+
+    def test_500g_plus_1kg_merges(self, storage):
+        """
+        500 g farine + 1 kg farine → single item at 1.5 kg.
+        Previously two separate entries were created because units differed.
+        """
+        mod, data_dir = storage
+
+        mod.add_item("shopping", "farine", quantity=500, unit="g")
+        mod.add_item("shopping", "farine", quantity=1, unit="kg")
+
+        data = json.loads((data_dir / "shopping.json").read_text())
+
+        assert len(data) == 1, (
+            f"Expected 1 merged entry, got {len(data)}. "
+            "Cross-unit fusion (g + kg) was not applied."
+        )
+        assert data[0]["unit"] == "kg", (
+            f"Expected unit 'kg', got {data[0]['unit']!r}."
+        )
+        assert data[0]["quantity"] == 1.5, (
+            f"Expected quantity 1.5, got {data[0]['quantity']}."
+        )
+
+    def test_500ml_plus_50cl_merges(self, storage):
+        """
+        500 ml lait + 50 cl lait → single item at 1 l.
+        Previously two separate entries were created.
+        """
+        mod, data_dir = storage
+
+        mod.add_item("shopping", "lait", quantity=500, unit="ml")
+        mod.add_item("shopping", "lait", quantity=50, unit="cl")
+
+        data = json.loads((data_dir / "shopping.json").read_text())
+
+        assert len(data) == 1, (
+            f"Expected 1 merged entry, got {len(data)}. "
+            "Cross-unit fusion (ml + cl) was not applied."
+        )
+        assert data[0]["unit"] == "l", (
+            f"Expected unit 'l', got {data[0]['unit']!r}."
+        )
+        assert data[0]["quantity"] == 1, (
+            f"Expected quantity 1, got {data[0]['quantity']}."
+        )

@@ -83,7 +83,7 @@ Objectif : améliorer la fiabilité de l'extraction d'actions.
 ## Résidus à compléter en priorité
 - [ ] gestion avancée des dates et échéances (les appointments sont inutilisables sans ça)
 - [ ] résolution d'ambiguïtés phonétiques (pompier / plombier)
-- [ ] conversion d'unités (g ↔ kg, ml ↔ l) — bloque la fusion au quotidien
+- [x] conversion d'unités (g ↔ kg, ml ↔ l, cl) — fusion cross-unité avec sélection unité lisible
 - [x] synonymes métier (patates → pommes de terre)
 
 ---
