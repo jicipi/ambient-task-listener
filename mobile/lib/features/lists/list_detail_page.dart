@@ -498,56 +498,67 @@ class _ListDetailPageState extends State<ListDetailPage> {
                   }
                 }
 
-                return ListTile(
-                  leading: scheduledDate != null
-                      ? const Icon(Icons.event, color: Colors.blueGrey)
-                      : Checkbox(
-                          value: done,
-                          onChanged: (v) {
-                            if (v != null) {
-                              _toggleDone(itemId: itemId, newValue: v);
-                            }
-                          },
-                        ),
-                  title: Text(
-                    text,
-                    style: TextStyle(
-                      decoration: done ? TextDecoration.lineThrough : null,
-                    ),
+                return Dismissible(
+                  key: ValueKey('apt-$itemId'),
+                  direction: DismissDirection.horizontal,
+                  background: Container(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.only(left: 20),
+                    color: Colors.blue,
+                    child: const Icon(Icons.edit, color: Colors.white),
                   ),
-                  subtitle: dateDisplay != null
-                      ? Text(
-                          dateDisplay,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.blueGrey,
+                  secondaryBackground: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    color: Colors.red,
+                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                  ),
+                  confirmDismiss: (direction) async {
+                    if (direction == DismissDirection.startToEnd) {
+                      await _editAppointmentDialog(
+                        itemId: itemId.toString(),
+                        currentText: text,
+                        currentScheduledDate: scheduledDate,
+                      );
+                    } else {
+                      await _deleteItem(itemId: itemId);
+                    }
+                    return false;
+                  },
+                  child: ListTile(
+                    leading: scheduledDate != null
+                        ? const Icon(Icons.event, color: Colors.blueGrey)
+                        : Checkbox(
+                            value: done,
+                            onChanged: (v) {
+                              if (v != null) {
+                                _toggleDone(itemId: itemId, newValue: v);
+                              }
+                            },
                           ),
-                        )
-                      : null,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Checkbox(
-                        value: done,
-                        onChanged: (v) {
-                          if (v != null) {
-                            _toggleDone(itemId: itemId, newValue: v);
-                          }
-                        },
+                    title: Text(
+                      text,
+                      style: TextStyle(
+                        decoration: done ? TextDecoration.lineThrough : null,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => _editAppointmentDialog(
-                          itemId: itemId.toString(),
-                          currentText: text,
-                          currentScheduledDate: scheduledDate,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => _deleteItem(itemId: itemId),
-                      ),
-                    ],
+                    ),
+                    subtitle: dateDisplay != null
+                        ? Text(
+                            dateDisplay,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.blueGrey,
+                            ),
+                          )
+                        : null,
+                    trailing: Checkbox(
+                      value: done,
+                      onChanged: (v) {
+                        if (v != null) {
+                          _toggleDone(itemId: itemId, newValue: v);
+                        }
+                      },
+                    ),
                   ),
                 );
               }).toList(),
@@ -599,40 +610,69 @@ class _ListDetailPageState extends State<ListDetailPage> {
                       display = "$quantity $text";
                     }
 
-                    return ListTile(
-                      leading: Checkbox(
-                        value: done,
-                        onChanged: (v) {
-                          if (v != null) {
-                            _toggleDone(itemId: itemId, newValue: v);
-                          }
-                        },
+                    return Dismissible(
+                      key: ValueKey('item-$itemId'),
+                      direction: DismissDirection.horizontal,
+                      background: Container(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.only(left: 20),
+                        color: Colors.blue,
+                        child: const Icon(Icons.edit, color: Colors.white),
                       ),
-                      title: Text(
-                        display,
-                        style: TextStyle(
-                          decoration:
-                              done ? TextDecoration.lineThrough : null,
+                      secondaryBackground: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        color: Colors.red,
+                        child: const Icon(Icons.delete_outline, color: Colors.white),
+                      ),
+                      confirmDismiss: (direction) async {
+                        if (direction == DismissDirection.startToEnd) {
+                          await _editItemDialog(
+                            itemId: itemId,
+                            currentText: text,
+                            currentCategory: category,
+                            currentQuantity: quantity,
+                            currentUnit: unit?.toString(),
+                          );
+                        } else {
+                          await _deleteItem(itemId: itemId);
+                        }
+                        return false;
+                      },
+                      child: ListTile(
+                        leading: Checkbox(
+                          value: done,
+                          onChanged: (v) {
+                            if (v != null) {
+                              _toggleDone(itemId: itemId, newValue: v);
+                            }
+                          },
                         ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _editItemDialog(
-                              itemId: itemId,
-                              currentText: text,
-                              currentCategory: category,
-                              currentQuantity: quantity,
-                              currentUnit: unit?.toString(),
+                        title: Text(
+                          display,
+                          style: TextStyle(
+                            decoration: done ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _editItemDialog(
+                                itemId: itemId,
+                                currentText: text,
+                                currentCategory: category,
+                                currentQuantity: quantity,
+                                currentUnit: unit?.toString(),
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _deleteItem(itemId: itemId),
-                          ),
-                        ],
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () => _deleteItem(itemId: itemId),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }),
