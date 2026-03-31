@@ -82,7 +82,7 @@ Objectif : améliorer la fiabilité de l'extraction d'actions.
 
 ## Résidus à compléter en priorité
 - [x] gestion avancée des dates et échéances — parsing français stdlib-only, affichage mobile trié
-- [ ] résolution d'ambiguïtés phonétiques (pompier / plombier)
+- [x] résolution d'ambiguïtés phonétiques (pompier / plombier)
 - [x] conversion d'unités (g ↔ kg, ml ↔ l, cl) — fusion cross-unité avec sélection unité lisible
 - [x] synonymes métier (patates → pommes de terre)
 
@@ -154,7 +154,7 @@ Objectif : rendre l'app réellement utilisable au quotidien, pas juste démontra
 ## Priorité haute (impact direct sur l'usage)
 - [x] mode "courses" optimisé — plein écran, tap = toggle, swipe suppression, effacer faits
 - [x] notifications locales iOS/macOS pour appointments (planifiées à 9h, replanifiées à chaque sync)
-- [ ] édition inline (sans dialog)
+- [x] édition inline (sans dialog)
 - [x] swipe gestures (delete / edit) — toutes les listes, swipe droit = édition, gauche = suppression
 
 ## Priorité normale
