@@ -757,9 +757,13 @@ class _InlineEditTileState extends State<_InlineEditTile> {
     _ctrl = TextEditingController(text: widget.text);
     _focus.addListener(() {
       if (!_focus.hasFocus && _editing) {
-        setState(() {
-          _editing = false;
-          _ctrl.text = widget.text;
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted && _editing) {
+            setState(() {
+              _editing = false;
+              _ctrl.text = widget.text;
+            });
+          }
         });
       }
     });

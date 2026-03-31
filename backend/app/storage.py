@@ -457,7 +457,7 @@ def rename_item(list_name: str, item_id: str, text: str) -> bool:
 
     for entry in data:
         if entry.get("id") == item_id:
-            entry["text"] = corrected_text
+            entry["text"] = text.strip()
             _save_list(list_name, data)
             return True
 
