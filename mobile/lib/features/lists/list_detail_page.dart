@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
 import '../../core/config/api_config.dart';
+import 'shopping_mode_page.dart';
 
 class ListDetailPage extends StatefulWidget {
   final String listKey;
@@ -280,6 +281,19 @@ class _ListDetailPageState extends State<ListDetailPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
+        actions: [
+          if (widget.listKey == "shopping")
+            IconButton(
+              icon: const Icon(Icons.shopping_cart_checkout),
+              tooltip: 'Mode courses',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ShoppingModePage(),
+                ),
+              ),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddItemDialog,
