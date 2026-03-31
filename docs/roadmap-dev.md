@@ -155,7 +155,7 @@ Objectif : rendre l'app réellement utilisable au quotidien, pas juste démontra
 - [x] mode "courses" optimisé — plein écran, tap = toggle, swipe suppression, effacer faits
 - [x] notifications locales iOS/macOS pour appointments (planifiées à 9h, replanifiées à chaque sync)
 - [ ] édition inline (sans dialog)
-- [ ] swipe gestures (delete / edit)
+- [x] swipe gestures (delete / edit) — toutes les listes, swipe droit = édition, gauche = suppression
 
 ## Priorité normale
 - [ ] tri manuel / bouton de tri
