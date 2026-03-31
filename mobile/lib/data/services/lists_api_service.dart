@@ -83,6 +83,23 @@ class ListsApiService {
     return data['updated'] == true;
   }
 
+  Future<bool> updateItemScheduledDate({
+    required String listName,
+    required String itemId,
+    String? scheduledDate,
+  }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.patch(
+      Uri.parse('$baseUrl/lists/$listName/item/$itemId/scheduled_date'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'scheduled_date': scheduledDate}),
+    );
+
+    if (response.statusCode != 200) return false;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['updated'] == true;
+  }
+
   Future<bool> updateItemCategory({
     required String listName,
     required String itemId,

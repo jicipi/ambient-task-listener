@@ -289,6 +289,19 @@ class _ListDetailPageState extends State<ListDetailPage> {
         text: newText,
       );
     }
+
+    final isoDate = selectedDate != null
+        ? '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}'
+        : null;
+
+    if (isoDate != currentScheduledDate) {
+      await _api.updateItemScheduledDate(
+        listName: widget.listKey,
+        itemId: itemId,
+        scheduledDate: isoDate,
+      );
+    }
+
     _reload();
   }
 

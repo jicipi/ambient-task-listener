@@ -484,6 +484,21 @@ def update_item_category(list_name: str, item_id: str, category: str) -> bool:
 
 
 
+def update_item_scheduled_date(list_name: str, item_id: str, scheduled_date: str | None) -> bool:
+    if list_name not in FILES:
+        return False
+
+    with _lock:
+        data = _load_list(list_name)
+        for entry in data:
+            if entry.get("id") == item_id:
+                entry["scheduled_date"] = scheduled_date
+                _save_list(list_name, data)
+                return True
+
+    return False
+
+
 def _load_learning() -> dict:
     if not LEARNING_FILE.exists():
         return {"categories": {}, "synonyms": {}}

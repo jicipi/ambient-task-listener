@@ -17,6 +17,7 @@ from app.storage import (
     update_item_done,
     rename_item,
     update_item_category,
+    update_item_scheduled_date,
 )
 from app.storage import get_pending_items, approve_pending_item, reject_pending_item
 from app.transcription import transcribe_audio_file, transcribe_bytes_to_text
@@ -70,6 +71,17 @@ app.add_middleware(
 )
 
 VALID_LISTS = {"shopping", "todo", "todo_pro", "appointments", "ideas"}
+
+@app.patch("/lists/{list_name}/item/{item_id}/scheduled_date")
+async def patch_item_scheduled_date(list_name: str, item_id: str, payload: dict):
+    scheduled_date = payload.get("scheduled_date")
+    updated = update_item_scheduled_date(list_name, item_id, scheduled_date)
+
+    if updated:
+        await notify_clients("update")
+
+    return {"updated": updated}
+
 
 @app.patch("/lists/{list_name}/item/{item_id}/category")
 async def patch_item_category(list_name: str, item_id: str, payload: dict):
