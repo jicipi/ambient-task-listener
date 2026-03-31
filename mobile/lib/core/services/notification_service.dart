@@ -21,13 +21,16 @@ class NotificationService {
         tz.setLocalLocation(tz.getLocation('Europe/Paris'));
       }
 
-      const initSettingsIOS = DarwinInitializationSettings(
+      const darwinSettings = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
         requestSoundPermission: false,
       );
 
-      const initSettings = InitializationSettings(iOS: initSettingsIOS);
+      const initSettings = InitializationSettings(
+        iOS: darwinSettings,
+        macOS: darwinSettings,
+      );
       await _plugin.initialize(initSettings);
       _initialized = true;
     } catch (e) {
@@ -41,6 +44,10 @@ class NotificationService {
       await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     } catch (e) {
       debugPrint('NotificationService requestPermissions failed: $e');
@@ -88,6 +95,11 @@ class NotificationService {
           scheduleTime,
           const NotificationDetails(
             iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
+            macOS: DarwinNotificationDetails(
               presentAlert: true,
               presentBadge: true,
               presentSound: true,
