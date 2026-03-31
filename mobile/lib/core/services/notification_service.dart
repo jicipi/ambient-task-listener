@@ -12,27 +12,39 @@ class NotificationService {
     if (kIsWeb) return;
     if (_initialized) return;
 
-    tz.initializeTimeZones();
-    final tzName = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(tzName));
+    try {
+      tz.initializeTimeZones();
+      try {
+        final tzName = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(tzName));
+      } catch (_) {
+        tz.setLocalLocation(tz.getLocation('Europe/Paris'));
+      }
 
-    const initSettingsIOS = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
+      const initSettingsIOS = DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
 
-    const initSettings = InitializationSettings(iOS: initSettingsIOS);
-    await _plugin.initialize(initSettings);
-    _initialized = true;
+      const initSettings = InitializationSettings(iOS: initSettingsIOS);
+      await _plugin.initialize(initSettings);
+      _initialized = true;
+    } catch (e) {
+      debugPrint('NotificationService init failed: $e');
+    }
   }
 
   static Future<void> requestPermissions() async {
     if (kIsWeb) return;
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    try {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      debugPrint('NotificationService requestPermissions failed: $e');
+    }
   }
 
   static Future<void> scheduleAppointmentNotifications(
@@ -41,50 +53,53 @@ class NotificationService {
     if (kIsWeb) return;
     if (!_initialized) return;
 
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
 
-    final now = tz.TZDateTime.now(tz.local);
-    int id = 0;
+      final now = tz.TZDateTime.now(tz.local);
+      int id = 0;
 
-    for (final apt in appointments) {
-      if (apt["done"] == true) continue;
+      for (final apt in appointments) {
+        if (apt["done"] == true) continue;
 
-      final dateStr = apt["scheduled_date"] as String?;
-      if (dateStr == null) continue;
+        final dateStr = apt["scheduled_date"] as String?;
+        if (dateStr == null) continue;
 
-      final date = DateTime.tryParse(dateStr);
-      if (date == null) continue;
+        final date = DateTime.tryParse(dateStr);
+        if (date == null) continue;
 
-      // Notification at 9:00 AM on the appointment day
-      final scheduleTime = tz.TZDateTime(
-        tz.local,
-        date.year,
-        date.month,
-        date.day,
-        9,
-        0,
-      );
+        final scheduleTime = tz.TZDateTime(
+          tz.local,
+          date.year,
+          date.month,
+          date.day,
+          9,
+          0,
+        );
 
-      if (scheduleTime.isBefore(now)) continue;
+        if (scheduleTime.isBefore(now)) continue;
 
-      final text = (apt["text"] ?? "").toString();
+        final text = (apt["text"] ?? "").toString();
 
-      await _plugin.zonedSchedule(
-        id++,
-        'Rendez-vous',
-        text,
-        scheduleTime,
-        const NotificationDetails(
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
+        await _plugin.zonedSchedule(
+          id++,
+          'Rendez-vous',
+          text,
+          scheduleTime,
+          const NotificationDetails(
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      }
+    } catch (e) {
+      debugPrint('NotificationService schedule failed: $e');
     }
   }
 }
