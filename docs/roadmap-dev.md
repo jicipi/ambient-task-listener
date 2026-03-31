@@ -134,8 +134,8 @@ Objectif : transformer le système en assistant intelligent capable de décider 
 
 ## À compléter
 - [ ] ajustement dynamique du seuil de confiance
-- [~] confirmation utilisateur simple (UI pending basique)
-- [ ] confirmation utilisateur avancée (édition complète avant validation)
+- [x] confirmation utilisateur simple (UI pending basique)
+- [x] confirmation utilisateur avancée (édition complète : texte, liste, qté, unité, catégorie, date)
 - [ ] priorisation des actions
 - [ ] gestion des actions multiples complexes
 
@@ -152,8 +152,8 @@ Objectif : transformer le système en assistant intelligent capable de décider 
 Objectif : rendre l'app réellement utilisable au quotidien, pas juste démontrable.
 
 ## Priorité haute (impact direct sur l'usage)
-- [ ] mode "courses" optimisé pour usage en magasin (plein écran, gros items, tap rapide)
-- [ ] notifications / rappels pour todo et appointments
+- [x] mode "courses" optimisé — plein écran, tap = toggle, swipe suppression, effacer faits
+- [x] notifications locales iOS/macOS pour appointments (planifiées à 9h, replanifiées à chaque sync)
 - [ ] édition inline (sans dialog)
 - [ ] swipe gestures (delete / edit)
 
