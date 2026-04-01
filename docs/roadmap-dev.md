@@ -102,12 +102,12 @@ Objectif : poser le socle technique avant d'aller plus loin. Sans cette phase, c
 - [x] tests unitaires : cleaning (parse_shopping_item, normalize, categorize) — 20 tests
 - [x] tests storage : add_item, rename_item, delete, update_done, fusion — 22 tests
 - [x] tests de régression sur les bugs corrigés (learn_synonym, décimaux, fusion) — 15 tests
-- [ ] tests d'intégration : pipeline complet voix → liste
+- [x] tests d'intégration : pipeline complet voix → liste — 21 tests (228 total)
 
 ## Résilience
 - [x] timeout court sur Ollama (5s) + fallback gracieux
 - [x] gestion propre du cas "Ollama indisponible" (WARNING log)
-- [ ] logs structurés (niveau INFO/WARNING/ERROR) — partiellement fait
+- [x] logs structurés (niveau INFO/WARNING/ERROR)
 
 ## Configuration
 - [x] URL backend configurable dans l'app Flutter
@@ -133,7 +133,7 @@ Objectif : transformer le système en assistant intelligent capable de décider 
 - [x] intégration temps réel dans listen_loop avec feedback utilisateur
 
 ## À compléter
-- [ ] ajustement dynamique du seuil de confiance
+- [x] ajustement dynamique du seuil de confiance (sliders dans Settings)
 - [x] confirmation utilisateur simple (UI pending basique)
 - [x] confirmation utilisateur avancée (édition complète : texte, liste, qté, unité, catégorie, date)
 - [ ] priorisation des actions
@@ -159,8 +159,8 @@ Objectif : rendre l'app réellement utilisable au quotidien, pas juste démontra
 
 ## Priorité normale
 - [x] tri manuel (drag & drop todo/ideas)
-- [ ] ordre de catégories personnalisé
-- [ ] animations d'apparition des tâches
+- [x] ordre de catégories personnalisé (drag & drop dans dialog shopping)
+- [x] animations d'apparition des tâches (fade + slide, délai par index)
 
 ---
 
