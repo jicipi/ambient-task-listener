@@ -35,6 +35,7 @@ class ApprovePendingPayload(BaseModel):
     quantity: float | None = None
     unit: str | None = None
     scheduled_date: str | None = None
+    priority: int = 2
 
 class ConfidenceSettingsPayload(BaseModel):
     add_threshold: float
@@ -115,6 +116,7 @@ async def approve_pending(item_id: str, payload: ApprovePendingPayload | None = 
         override_quantity=payload.quantity if payload else None,
         override_unit=payload.unit if payload else None,
         override_scheduled_date=payload.scheduled_date if payload else None,
+        priority=payload.priority if payload else 2,
     )
 
     if not ok:
@@ -210,6 +212,7 @@ async def add_list_item(list_name: str, payload: ListItemInput) -> dict:
         payload.item,
         source_transcript=payload.source_transcript,
         scheduled_date=payload.scheduled_date,
+        priority=payload.priority,
     )
 
     if created:
@@ -325,6 +328,12 @@ def put_list_category_order(list_name: str, payload: CategoryOrderPayload) -> di
 @app.post("/extract")
 def extract(text_input: TextInput) -> dict:
     action = extract_action(text_input.text)
+    if action.get("multi"):
+        return {
+            "multi": True,
+            "actions": action["actions"],
+            "transcript": text_input.text,
+        }
     return {
         "transcript": text_input.text,
         **action,

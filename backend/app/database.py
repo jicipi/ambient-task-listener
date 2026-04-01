@@ -102,5 +102,12 @@ def init_db() -> None:
                     value   TEXT NOT NULL
                 );
             """)
+            # Migration : ajoute la colonne priority si elle n'existe pas encore
+            try:
+                conn.execute(
+                    "ALTER TABLE items ADD COLUMN priority INTEGER DEFAULT 2"
+                )
+            except Exception:
+                pass  # colonne déjà présente
     finally:
         conn.close()

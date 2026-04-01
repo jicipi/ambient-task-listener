@@ -105,6 +105,83 @@ def interpret_with_llm(text: str):
         return None
 
 
+MULTI_PROMPT = """
+You extract multiple actionable items from a single French spoken sentence.
+
+Return ONLY a valid JSON array. No markdown. No explanation.
+
+Each element in the array must have:
+- "intent": one of shopping_add, todo_add, todo_pro_add, appointment_add, idea_add
+- "item": the extracted item (string)
+- "time_hint": a time hint if present, otherwise null
+
+Interpretation rules:
+- shopping_add: groceries, household products, things to buy
+- todo_add: actions to do, people to call, things to send, tasks to complete
+- todo_pro_add: professional tasks (clients, meetings, training, projects, quotes)
+- appointment_add: appointments to schedule, bookings
+- idea_add: ideas, creative notes, thoughts to keep
+
+Examples:
+
+Sentence: "achète du lait et appelle le médecin demain"
+Output:
+[{"intent":"shopping_add","item":"lait","time_hint":null},{"intent":"todo_add","item":"médecin","time_hint":"tomorrow"}]
+
+Sentence: "ajoute des pommes et des oranges"
+Output:
+[{"intent":"shopping_add","item":"pommes","time_hint":null},{"intent":"shopping_add","item":"oranges","time_hint":null}]
+
+Sentence: "pense à appeler le dentiste et à commander les médicaments"
+Output:
+[{"intent":"todo_add","item":"dentiste","time_hint":null},{"intent":"shopping_add","item":"médicaments","time_hint":null}]
+
+Sentence:
+"""
+
+
+def interpret_multiple_with_llm(text: str) -> list[dict] | None:
+    """Demande au LLM d'extraire plusieurs actions depuis une phrase."""
+    payload = {
+        "model": MODEL,
+        "prompt": MULTI_PROMPT + text,
+        "stream": False,
+        "options": {
+            "temperature": 0,
+            "num_predict": 300,
+        },
+    }
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=5)
+        response.raise_for_status()
+
+        data = response.json()
+        raw = data.get("response", "").strip()
+
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return parsed
+            # LLM may have returned a single object — wrap it
+            if isinstance(parsed, dict):
+                return [parsed]
+            return None
+        except json.JSONDecodeError:
+            logger.warning("interpret_multiple_with_llm: JSON invalide : %s", raw)
+            return None
+
+    except requests.exceptions.ConnectionError:
+        logger.warning("Ollama indisponible — fallback LLM multi ignoré")
+        return None
+    except requests.exceptions.Timeout:
+        logger.warning("Ollama timeout (5s) — fallback LLM multi ignoré")
+        return None
+    except Exception as e:
+        logger.warning("Ollama erreur inattendue (multi) : %s", e)
+        return None
+
+
 def categorize_with_llm(text: str) -> str | None:
     try:
         result = interpret_with_llm(

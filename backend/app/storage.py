@@ -149,6 +149,7 @@ def approve_pending_item(
     override_quantity: float | None = None,
     override_unit: str | None = None,
     override_scheduled_date: str | None = None,
+    priority: int = 2,
 ) -> bool:
     with _lock:
         conn = _get_db()
@@ -184,6 +185,7 @@ def approve_pending_item(
             quantity=quantity,
             unit=unit,
             scheduled_date=scheduled_date,
+            priority=priority,
         )
 
         conn = _get_db()
@@ -331,6 +333,7 @@ def add_item(
     quantity: int | None = None,
     unit: str | None = None,
     scheduled_date: str | None = None,
+    priority: int = 2,
 ) -> bool:
     if list_name not in FILES or not item:
         return False
@@ -453,13 +456,13 @@ def add_item(
                     """
                     INSERT INTO items
                         (id, list_name, text, done, quantity, unit, category,
-                         scheduled_date, created_at, source_transcript)
-                    VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                         scheduled_date, created_at, source_transcript, priority)
+                    VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         item_id, list_name, final_text, quantity, unit, category,
                         scheduled_date if list_name == "appointments" else None,
-                        created_at, source_transcript,
+                        created_at, source_transcript, priority,
                     ),
                 )
         finally:
