@@ -29,11 +29,26 @@ PHONETIC_FIXES: dict[str, str] = {
     # Variantes oignon
     "ognon": "oignon",
     "ognons": "oignons",
-    # Variantes yaourt
+    # Variantes yaourt — phonétiques étrangères
     "yoghourt": "yaourt",
     "yogourt": "yaourt",
     "yoghurt": "yaourt",
     "yogurt": "yaourt",
+    # Variantes yaourt — confusions Whisper FR
+    "yard-ot-grec": "yaourt grec",
+    "yard ot grec": "yaourt grec",
+    "yard-ot": "yaourt",
+    "yardot": "yaourt",
+    # Rhum (Whisper FR transcrit parfois "rhum" en "rom")
+    "rom": "rhum",
+    # Céréales
+    "ses réels": "céréales",
+    "ses réel": "céréales",
+    "ces réels": "céréales",
+    # Adoucissant
+    "la doucissante": "l'adoucissant",
+    "de la doucissante": "de l'adoucissant",
+    "doucissante": "adoucissant",
     # Nombres oraux → chiffres
     "si clémentine": "6 clémentines",
     "six clémentine": "6 clémentines",
@@ -50,6 +65,32 @@ PHONETIC_FIXES: dict[str, str] = {
     "super-marché": "supermarché",
     "pomme de terres": "pommes de terre",
 }
+
+# ---------------------------------------------------------------------------
+# Corrections de prénoms utilisateur
+# Appliquées uniquement en contexte (précédé ou suivi de mots déclencheurs)
+# pour éviter de corriger des prénoms légitimes (ex : "Elias" comme personne réelle).
+# ---------------------------------------------------------------------------
+
+USER_NAMES_FIXES: dict[str, str] = {
+    "elias": "hélia",
+    "elia": "hélia",
+    "lian": "hélia",
+}
+
+def _build_name_context_re() -> re.Pattern:
+    """Compile la regex contextuelle avec les prénoms courants à corriger."""
+    names_pat = "|".join(re.escape(k) for k in USER_NAMES_FIXES)
+    return re.compile(
+        rf"(?:"
+        rf"(?:emmener|emmène|avec|pour)\s+({names_pat})"
+        rf"|({names_pat})\s+(?:à\b|au\b|n['\u2019]a\b|a\s+besoin)"
+        rf")",
+        re.IGNORECASE | re.UNICODE,
+    )
+
+
+_NAME_CTX_RE = _build_name_context_re()
 
 # Noms de professions improbables dans un contexte shopping
 # (signale une possible confusion phonétique, abaisse la confiance)
@@ -87,10 +128,26 @@ def is_likely_shopping_mishearing(item: str) -> bool:
     return bool(words & PROFESSION_NOUNS)
 
 
+def apply_user_names_fixes(text: str) -> str:
+    """
+    Corrige les prénoms utilisateur uniquement lorsque le contexte suggère un prénom
+    (précédé de emmener/avec/pour ou suivi de à/au/n'a/a besoin).
+    """
+    def _replace(m: re.Match) -> str:
+        # Groupe 1 : prénom après mot déclencheur ; groupe 2 : prénom avant mot suivant
+        wrong = m.group(1) or m.group(2)
+        correct = USER_NAMES_FIXES.get(wrong.lower(), wrong)
+        full = m.group(0)
+        return full.replace(wrong, correct, 1)
+
+    return _NAME_CTX_RE.sub(_replace, text)
+
+
 def correct_transcript(text: str) -> str:
     """Pipeline complet de post-correction ASR."""
     if not text:
         return text
     text = remove_filler_words(text)
     text = apply_phonetic_fixes(text)
+    text = apply_user_names_fixes(text)
     return text.strip()

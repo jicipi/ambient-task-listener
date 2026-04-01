@@ -413,3 +413,60 @@ class TestMultipleActions:
         # confidence < 0.7 → decision == "confirm" (via pending, pas direct)
         # On vérifie que la décision est cohérente
         assert result["decision"] in ("add", "confirm")
+
+
+# ---------------------------------------------------------------------------
+# Test 11 : pattern "j'ai [event] [jour]" → appointment_add
+# ---------------------------------------------------------------------------
+
+class TestAppointmentJai:
+
+    def test_jai_entrainement_lundi(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("j'ai entraînement lundi")
+        assert result["intent"] == "appointment_add"
+        assert result["decision"] in ("add", "confirm")
+        assert result["item"] is not None
+        assert "entraînement" in result["item"]
+
+    def test_jai_cours_mercredi(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("j'ai un cours mercredi")
+        assert result["intent"] == "appointment_add"
+        assert result["item"] is not None
+        assert "cours" in result["item"]
+
+    def test_jai_match_samedi(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("j'ai un match samedi")
+        assert result["intent"] == "appointment_add"
+        assert result["item"] is not None
+        assert "match" in result["item"]
+
+    def test_jai_reunion_demain(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("j'ai une réunion demain")
+        assert result["intent"] == "appointment_add"
+        assert result["item"] is not None
+        assert "réunion" in result["item"]
+
+
+# ---------------------------------------------------------------------------
+# Test 12 : "[prénom] n'a plus de Y" → shopping_add
+# ---------------------------------------------------------------------------
+
+class TestShoppingPrenom:
+
+    def test_helia_na_plus_de_lait(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("Hélia n'a plus de lait")
+        assert result["intent"] == "shopping_add"
+        assert result["item"] is not None
+        assert "lait" in result["item"]
+
+    def test_elle_na_plus_de_jus(self, pipeline):
+        extractor, _ = pipeline
+        result = extractor("elle n'a plus de jus d'orange")
+        assert result["intent"] == "shopping_add"
+        assert result["item"] is not None
+        assert "jus" in result["item"]

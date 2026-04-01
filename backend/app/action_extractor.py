@@ -106,7 +106,7 @@ SHOPPING_PATTERNS = [
     r"je\s+vais\s+devoir\s+ach[eè]t\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     rf"(?:{LEADERS})?\s*(?:ach[eè]t\w*|rach[eè]t\w*|command\w*|ajout\w*|rajout\w*|prendre)\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     r"on\s+a\s+(?:bientôt|presque|presque\s+plus)\s+plus\s+de\s+(.+?)(?:\s*,.*)?$",
-    r"on\s+n[' ]?a\s+plus\s+de\s+(.+)",
+    r"(?:on|il|elle|je|tu|[\w]+)\s+n['\u2019]?a\s+plus\s+de\s+(.+)",
     r"il\s+nous\s+faut\s+(.+)",
     r"rajoute\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     r"ajoute\s+(.+?)(?:\s+à\s+la\s+liste)?$",
@@ -134,11 +134,21 @@ TODO_PATTERNS = [
     r"^rappelle\w*\s+(?:le|la|les|l[‘’]|un|une|du|de|moi|toi)?\s*(.+)",
 ]
 
+_DAYS = r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|demain|ce\s+soir|ce\s+week-end)"
+_EVENT_TYPES = (
+    r"(?:entraînement|cours|match|rdv|rendez.vous|séance|réunion"
+    r"|formation|atelier|tournoi|compétition|concert|spectacle)"
+)
+
 APPOINTMENT_PATTERNS = [
     rf"(?:{LEADERS})?\s*prendre\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
     r"(?:prends|prenez)\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
     rf"(?:{LEADERS})\s*réserver\s+(.+)",
     rf"(?:{PERSONAL_LEADERS})(?:prenne|prendre)\s+rendez[- ]vous\s+(?:chez|avec)?\s*(.+)",
+    # "j'ai [event de X] [jour] [heure optionnelle]"
+    rf"j['\u2019]ai\s+(?:un\s+|une\s+|mon\s+|ma\s+)?({_EVENT_TYPES}(?:\s+(?:de|d['\u2019])?\s*\w+(?:\s+\w+)?)?)\s+{_DAYS}",
+    # "j'ai [event] [jour]" — formulation naturelle générique
+    rf"j['\u2019]ai\s+(?:un\s+|une\s+|mon\s+|ma\s+)?({_EVENT_TYPES})\s+{_DAYS}",
 ]
 
 IDEA_PATTERNS = [
