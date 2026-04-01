@@ -136,14 +136,14 @@ Objectif : transformer le système en assistant intelligent capable de décider 
 - [x] ajustement dynamique du seuil de confiance (sliders dans Settings)
 - [x] confirmation utilisateur simple (UI pending basique)
 - [x] confirmation utilisateur avancée (édition complète : texte, liste, qté, unité, catégorie, date)
-- [ ] priorisation des actions
-- [ ] gestion des actions multiples complexes
+- [x] priorisation des actions (champ priority 1/2/3)
+- [x] gestion des actions multiples complexes (split connecteurs + LLM multi)
 
 ## Compréhension hybride règles + IA
 - [x] règles pour cas simples
 - [x] fallback LLM pour cas ambigus
-- [ ] arbitrage avancé règles vs IA
-- [ ] score de confiance combiné règles + LLM
+- [x] arbitrage avancé règles vs IA (score combiné avec boost/pénalité)
+- [x] score de confiance combiné règles + LLM (source: rule/combined/llm)
 
 ---
 
