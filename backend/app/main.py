@@ -19,8 +19,11 @@ from app.storage import (
     reorder_list,
     update_item_category,
     update_item_scheduled_date,
+    get_category_order,
+    set_category_order,
 )
 from app.storage import get_pending_items, approve_pending_item, reject_pending_item
+from app.storage import get_setting, set_setting
 from app.transcription import transcribe_audio_file, transcribe_bytes_to_text
 
 class NotifyPayload(BaseModel):
@@ -32,6 +35,10 @@ class ApprovePendingPayload(BaseModel):
     quantity: float | None = None
     unit: str | None = None
     scheduled_date: str | None = None
+
+class ConfidenceSettingsPayload(BaseModel):
+    add_threshold: float
+    ignore_threshold: float
 
 app = FastAPI(title="Ambient Task Listener Backend")
 
@@ -158,6 +165,25 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/settings/confidence")
+def get_confidence_settings() -> dict:
+    add_threshold = float(get_setting("confidence_add_threshold", "0.7"))
+    ignore_threshold = float(get_setting("confidence_ignore_threshold", "0.35"))
+    return {"add_threshold": add_threshold, "ignore_threshold": ignore_threshold}
+
+
+@app.put("/settings/confidence")
+def put_confidence_settings(payload: ConfidenceSettingsPayload) -> dict:
+    if not (0 < payload.ignore_threshold < payload.add_threshold < 1):
+        raise HTTPException(
+            status_code=422,
+            detail="Les seuils doivent satisfaire : 0 < ignore_threshold < add_threshold < 1",
+        )
+    set_setting("confidence_add_threshold", str(payload.add_threshold))
+    set_setting("confidence_ignore_threshold", str(payload.ignore_threshold))
+    return {"ok": True}
+
+
 @app.get("/lists")
 def read_all_lists() -> dict:
     return get_all_lists()
@@ -273,6 +299,27 @@ async def reorder_list_items(list_name: str, payload: ReorderInput) -> dict:
         await notify_clients("update")
 
     return {"list": list_name, "reordered": ok}
+
+
+class CategoryOrderPayload(BaseModel):
+    categories: list[str]
+
+
+@app.get("/lists/{list_name}/category-order")
+def get_list_category_order(list_name: str) -> dict:
+    if list_name not in VALID_LISTS:
+        raise HTTPException(status_code=404, detail="Unknown list")
+
+    return {"categories": get_category_order(list_name)}
+
+
+@app.put("/lists/{list_name}/category-order")
+def put_list_category_order(list_name: str, payload: CategoryOrderPayload) -> dict:
+    if list_name not in VALID_LISTS:
+        raise HTTPException(status_code=404, detail="Unknown list")
+
+    ok = set_category_order(list_name, payload.categories)
+    return {"ok": ok}
 
 
 @app.post("/extract")

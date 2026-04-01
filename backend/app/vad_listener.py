@@ -2,6 +2,10 @@ import collections
 import webrtcvad
 import sounddevice as sd
 
+from app.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class VADRecorder:
     def __init__(self, device=2, aggressiveness=3):
@@ -18,7 +22,7 @@ class VADRecorder:
         self.max_frames_after_trigger = 333  # ~10 secondes max
 
     def record_phrase(self):
-        print("🎤 écoute...")
+        logger.info("ecoute...")
 
         frame_size = int(self.sample_rate * self.frame_duration_ms / 1000)
         bytes_per_frame = frame_size * 2  # int16 mono = 2 octets par sample
@@ -41,7 +45,7 @@ class VADRecorder:
                 frame, overflowed = stream.read(frame_size)
 
                 if overflowed:
-                    print("⚠ overflow audio détecté")
+                    logger.warning("overflow audio détecté")
 
                 if len(frame) != bytes_per_frame:
                     continue
@@ -58,7 +62,7 @@ class VADRecorder:
                         and num_voiced >= 0.7 * start_buffer.maxlen
                     ):
                         triggered = True
-                        print("🗣 parole détectée")
+                        logger.info("parole détectée")
                         voiced_frames.extend(f for f, _ in start_buffer)
                         start_buffer.clear()
                         end_buffer.clear()
@@ -74,12 +78,12 @@ class VADRecorder:
                         len(end_buffer) == end_buffer.maxlen
                         and num_unvoiced >= 0.7 * end_buffer.maxlen
                     ):
-                        print("✅ fin de phrase")
+                        logger.info("fin de phrase")
                         break
 
                     # sécurité si bruit continu / gens qui parlent autour
                     if triggered_frame_count >= self.max_frames_after_trigger:
-                        print("⏱ fin forcée (durée max atteinte)")
+                        logger.info("fin forcée (durée max atteinte)")
                         break
 
         return b"".join(voiced_frames)

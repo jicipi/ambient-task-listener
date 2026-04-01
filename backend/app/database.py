@@ -89,6 +89,18 @@ def init_db() -> None:
                     original    TEXT PRIMARY KEY,
                     normalized  TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS category_order (
+                    list_name   TEXT NOT NULL,
+                    category    TEXT NOT NULL,
+                    position    INTEGER NOT NULL,
+                    PRIMARY KEY (list_name, category)
+                );
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key     TEXT PRIMARY KEY,
+                    value   TEXT NOT NULL
+                );
             """)
     finally:
         conn.close()

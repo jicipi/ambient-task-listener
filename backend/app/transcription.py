@@ -6,6 +6,10 @@ from pathlib import Path
 
 import mlx_whisper
 
+from app.logger import get_logger
+
+logger = get_logger(__name__)
+
 DEFAULT_MODEL = "mlx-community/whisper-small-mlx"
 # DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
 
@@ -25,7 +29,7 @@ def transcribe_audio_file(audio_path: str, model_name: str = DEFAULT_MODEL) -> s
     )
 
     dt = time.perf_counter() - t0
-    print(f"⏱ transcription en {dt:.2f}s avec {model_name}")
+    logger.info("transcription en %.2fs avec %s", dt, model_name)
 
     text = result.get("text", "").strip()
     return text

@@ -8,6 +8,14 @@ from app.date_parser import parse_french_date
 from app.asr_corrections import correct_transcript, is_likely_shopping_mishearing
 
 
+def get_confidence_thresholds() -> tuple[float, float]:
+    """Retourne (add_threshold, ignore_threshold) depuis les settings persistés."""
+    from app.storage import get_setting
+    add_threshold = float(get_setting("confidence_add_threshold", "0.7"))
+    ignore_threshold = float(get_setting("confidence_ignore_threshold", "0.35"))
+    return add_threshold, ignore_threshold
+
+
 NEGATION_PATTERNS = [
     r"\bne\s+faut\s+pas\b",
     r"\bil\s+ne\s+faut\s+plus\b",
@@ -336,9 +344,16 @@ def extract_action(text: str) -> dict[str, Any]:
 
 def extract_action_with_fallback(text: str) -> dict[str, Any]:
     result = extract_action(text)
+    add_threshold, ignore_threshold = get_confidence_thresholds()
 
     if result["intent"] != "unknown":
-        result["decision"] = "confirm" if result["confidence"] < 0.7 else "add"
+        confidence = result["confidence"]
+        if confidence >= add_threshold:
+            result["decision"] = "add"
+        elif confidence <= ignore_threshold:
+            result["decision"] = "ignore"
+        else:
+            result["decision"] = "confirm"
         return result
 
     normalized = text.lower().strip()

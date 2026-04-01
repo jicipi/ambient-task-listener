@@ -1,8 +1,9 @@
 import json
-import logging
 import requests
 
-logger = logging.getLogger(__name__)
+from app.logger import get_logger
+
+logger = get_logger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.2"
@@ -139,5 +140,5 @@ def categorize_with_llm(text: str) -> str | None:
         return None
 
     except Exception as e:
-        print("Erreur LLM catégorisation:", e)
+        logger.error("Erreur LLM catégorisation : %s", e)
         return None

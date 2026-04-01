@@ -5,6 +5,71 @@ import '../../data/services/lists_api_service.dart';
 import '../../core/config/api_config.dart';
 import 'shopping_mode_page.dart';
 
+// ---------------------------------------------------------------------------
+// _AnimatedItem — FadeTransition + légère translation verticale à l'apparition
+// ---------------------------------------------------------------------------
+
+class _AnimatedItem extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const _AnimatedItem({
+    required Key key,
+    required this.index,
+    required this.child,
+  }) : super(key: key);
+
+  @override
+  State<_AnimatedItem> createState() => _AnimatedItemState();
+}
+
+class _AnimatedItemState extends State<_AnimatedItem>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final delay = Duration(milliseconds: (widget.index * 30).clamp(0, 300));
+
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.08), // ~10 px logiques vers le bas
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+
+    Future.delayed(delay, () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ListDetailPage
+// ---------------------------------------------------------------------------
+
 class ListDetailPage extends StatefulWidget {
   final String listKey;
   final String title;
@@ -35,6 +100,9 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
   late Future<Map<String, dynamic>> _future;
   WebSocketChannel? _channel;
+
+  /// Ordre des catégories chargé depuis le backend (shopping uniquement).
+  List<String> _categoryOrder = [];
 
   @override
   void initState() {
@@ -83,8 +151,29 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
   void _reload() {
     setState(() {
-      _future = _api.fetchAllLists();
+      if (widget.listKey == 'shopping') {
+        _future = _loadShoppingData();
+      } else {
+        _future = _api.fetchAllLists();
+      }
     });
+  }
+
+  /// Pour shopping : charge les items et l'ordre des catégories en parallèle.
+  Future<Map<String, dynamic>> _loadShoppingData() async {
+    final results = await Future.wait([
+      _api.fetchAllLists(),
+      _api.fetchCategoryOrder(widget.listKey),
+    ]);
+
+    final allLists = results[0] as Map<String, dynamic>;
+    final order = results[1] as List<String>;
+
+    if (mounted) {
+      setState(() => _categoryOrder = order);
+    }
+
+    return allLists;
   }
 
   Future<void> _toggleDone({
@@ -112,6 +201,68 @@ class _ListDetailPageState extends State<ListDetailPage> {
       _reload();
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Dialog : réordonner les catégories
+  // -------------------------------------------------------------------------
+
+  Future<void> _showCategoryOrderDialog(List<String> currentCategories) async {
+    final working = List<String>.from(currentCategories);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              title: const Text('Ordre des catégories'),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 350,
+                child: ReorderableListView(
+                  onReorder: (oldIdx, newIdx) {
+                    setLocal(() {
+                      if (newIdx > oldIdx) newIdx -= 1;
+                      final item = working.removeAt(oldIdx);
+                      working.insert(newIdx, item);
+                    });
+                  },
+                  children: working
+                      .map(
+                        (cat) => ListTile(
+                          key: ValueKey(cat),
+                          title: Text(cat),
+                          trailing: const Icon(Icons.drag_handle),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Valider'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    await _api.updateCategoryOrder(widget.listKey, working);
+    setState(() => _categoryOrder = working);
+  }
+
+  // -------------------------------------------------------------------------
+  // Dialogs add / edit
+  // -------------------------------------------------------------------------
 
   Future<void> _showAddItemDialog() async {
     final controller = TextEditingController();
@@ -443,7 +594,6 @@ class _ListDetailPageState extends State<ListDetailPage> {
     final newText = textController.text.trim();
     if (newText.isEmpty) { _reload(); return; }
 
-    // Construire la chaîne complète pour que le backend parse quantité + unité
     String textToSend = newText;
     if (widget.listKey == "shopping") {
       final qtyStr = quantityController.text.trim();
@@ -471,13 +621,26 @@ class _ListDetailPageState extends State<ListDetailPage> {
     _reload();
   }
 
+  // -------------------------------------------------------------------------
+  // Build
+  // -------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
-          if (widget.listKey == "shopping")
+          if (widget.listKey == "shopping") ...[
+            IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: 'Ordre des catégories',
+              onPressed: () => _showCategoryOrderDialog(
+                _categoryOrder.isNotEmpty
+                    ? _categoryOrder
+                    : ListDetailPage.shoppingCategories,
+              ),
+            ),
             IconButton(
               icon: const Icon(Icons.shopping_cart_checkout),
               tooltip: 'Mode courses',
@@ -488,6 +651,7 @@ class _ListDetailPageState extends State<ListDetailPage> {
                 ),
               ),
             ),
+          ],
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -509,7 +673,9 @@ class _ListDetailPageState extends State<ListDetailPage> {
             return const Center(child: Text("Liste vide"));
           }
 
-          // Appointments: flat list sorted by scheduled_date (null last)
+          // ------------------------------------------------------------------
+          // Appointments: liste plate triée par date
+          // ------------------------------------------------------------------
           if (widget.listKey == "appointments") {
             final sorted = List<Map<String, dynamic>>.from(items);
             sorted.sort((a, b) {
@@ -522,7 +688,9 @@ class _ListDetailPageState extends State<ListDetailPage> {
             });
 
             return ListView(
-              children: sorted.map((item) {
+              children: sorted.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final item = entry.value;
                 final itemId = item["id"];
                 final text = item["text"] ?? "";
                 final done = item["done"] == true;
@@ -541,66 +709,70 @@ class _ListDetailPageState extends State<ListDetailPage> {
                   }
                 }
 
-                return Dismissible(
-                  key: ValueKey('apt-$itemId'),
-                  direction: DismissDirection.horizontal,
-                  background: Container(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.only(left: 20),
-                    color: Colors.blue,
-                    child: const Icon(Icons.edit, color: Colors.white),
-                  ),
-                  secondaryBackground: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    color: Colors.red,
-                    child: const Icon(Icons.delete_outline, color: Colors.white),
-                  ),
-                  confirmDismiss: (direction) async {
-                    if (direction == DismissDirection.startToEnd) {
-                      await _editAppointmentDialog(
-                        itemId: itemId.toString(),
-                        currentText: text,
-                        currentScheduledDate: scheduledDate,
-                      );
-                    } else {
-                      await _deleteItem(itemId: itemId);
-                    }
-                    return false;
-                  },
-                  child: ListTile(
-                    leading: scheduledDate != null
-                        ? const Icon(Icons.event, color: Colors.blueGrey)
-                        : Checkbox(
-                            value: done,
-                            onChanged: (v) {
-                              if (v != null) {
-                                _toggleDone(itemId: itemId, newValue: v);
-                              }
-                            },
-                          ),
-                    title: Text(
-                      text,
-                      style: TextStyle(
-                        decoration: done ? TextDecoration.lineThrough : null,
-                      ),
+                return _AnimatedItem(
+                  key: ValueKey('anim-$itemId'),
+                  index: idx,
+                  child: Dismissible(
+                    key: ValueKey('apt-$itemId'),
+                    direction: DismissDirection.horizontal,
+                    background: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.only(left: 20),
+                      color: Colors.blue,
+                      child: const Icon(Icons.edit, color: Colors.white),
                     ),
-                    subtitle: dateDisplay != null
-                        ? Text(
-                            dateDisplay,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.blueGrey,
+                    secondaryBackground: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      color: Colors.red,
+                      child: const Icon(Icons.delete_outline, color: Colors.white),
+                    ),
+                    confirmDismiss: (direction) async {
+                      if (direction == DismissDirection.startToEnd) {
+                        await _editAppointmentDialog(
+                          itemId: itemId.toString(),
+                          currentText: text,
+                          currentScheduledDate: scheduledDate,
+                        );
+                      } else {
+                        await _deleteItem(itemId: itemId);
+                      }
+                      return false;
+                    },
+                    child: ListTile(
+                      leading: scheduledDate != null
+                          ? const Icon(Icons.event, color: Colors.blueGrey)
+                          : Checkbox(
+                              value: done,
+                              onChanged: (v) {
+                                if (v != null) {
+                                  _toggleDone(itemId: itemId, newValue: v);
+                                }
+                              },
                             ),
-                          )
-                        : null,
-                    trailing: Checkbox(
-                      value: done,
-                      onChanged: (v) {
-                        if (v != null) {
-                          _toggleDone(itemId: itemId, newValue: v);
-                        }
-                      },
+                      title: Text(
+                        text,
+                        style: TextStyle(
+                          decoration: done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      subtitle: dateDisplay != null
+                          ? Text(
+                              dateDisplay,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.blueGrey,
+                              ),
+                            )
+                          : null,
+                      trailing: Checkbox(
+                        value: done,
+                        onChanged: (v) {
+                          if (v != null) {
+                            _toggleDone(itemId: itemId, newValue: v);
+                          }
+                        },
+                      ),
                     ),
                   ),
                 );
@@ -608,7 +780,9 @@ class _ListDetailPageState extends State<ListDetailPage> {
             );
           }
 
-          // Shopping: group by category with headers
+          // ------------------------------------------------------------------
+          // Shopping: groupé par catégorie, ordre depuis le backend
+          // ------------------------------------------------------------------
           if (widget.listKey == "shopping") {
             final Map<String, List<Map<String, dynamic>>> grouped = {};
 
@@ -618,41 +792,55 @@ class _ListDetailPageState extends State<ListDetailPage> {
               grouped[cat]!.add(item);
             }
 
-            final categories = grouped.keys.toList()..sort();
+            // Ordre : catégories persistées d'abord, puis le reste trié alpha
+            final orderedSet = _categoryOrder.toSet();
+            final extraCats = grouped.keys
+                .where((c) => !orderedSet.contains(c))
+                .toList()
+              ..sort();
+            final categories = [
+              ..._categoryOrder.where((c) => grouped.containsKey(c)),
+              ...extraCats,
+            ];
+
+            // Index global pour l'animation
+            int animIdx = 0;
 
             return ListView(
-              children: categories.map((cat) {
+              children: categories.expand((cat) {
                 final categoryItems = grouped[cat]!;
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text(
-                        cat.toUpperCase(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
+                final widgets = <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      cat.toUpperCase(),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
                       ),
                     ),
-                    ...categoryItems.map((item) {
-                      final itemId = item["id"];
-                      final text = item["text"] ?? "";
-                      final done = item["done"] == true;
-                      final quantity = item["quantity"];
-                      final unit = item["unit"];
-                      final itemCategory = item["category"] ?? "autres";
+                  ),
+                  ...categoryItems.map((item) {
+                    final currentIdx = animIdx++;
+                    final itemId = item["id"];
+                    final text = item["text"] ?? "";
+                    final done = item["done"] == true;
+                    final quantity = item["quantity"];
+                    final unit = item["unit"];
+                    final itemCategory = item["category"] ?? "autres";
 
-                      String display = text;
-                      if (quantity != null && unit != null) {
-                        display = "$quantity $unit $text";
-                      } else if (quantity != null) {
-                        display = "$quantity $text";
-                      }
+                    String display = text;
+                    if (quantity != null && unit != null) {
+                      display = "$quantity $unit $text";
+                    } else if (quantity != null) {
+                      display = "$quantity $text";
+                    }
 
-                      return Dismissible(
+                    return _AnimatedItem(
+                      key: ValueKey('anim-$itemId'),
+                      index: currentIdx,
+                      child: Dismissible(
                         key: ValueKey('item-$itemId'),
                         direction: DismissDirection.horizontal,
                         background: Container(
@@ -695,15 +883,19 @@ class _ListDetailPageState extends State<ListDetailPage> {
                             ),
                           ),
                         ),
-                      );
-                    }),
-                  ],
-                );
+                      ),
+                    );
+                  }),
+                ];
+
+                return widgets;
               }).toList(),
             );
           }
 
-          // todo / todo_pro / ideas: reorderable list with drag & drop
+          // ------------------------------------------------------------------
+          // todo / todo_pro / ideas: ReorderableListView avec drag & drop
+          // ------------------------------------------------------------------
           return ReorderableListView(
             onReorder: (oldIndex, newIndex) async {
               if (newIndex > oldIndex) newIndex -= 1;
@@ -716,54 +908,63 @@ class _ListDetailPageState extends State<ListDetailPage> {
               await _api.reorderItems(listName: widget.listKey, ids: ids);
               _reload();
             },
-            children: items.map((item) {
+            children: items.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
               final itemId = item["id"];
               final text = item["text"] ?? "";
               final done = item["done"] == true;
 
-              return Dismissible(
-                key: ValueKey('inline-$itemId'),
-                direction: DismissDirection.horizontal,
-                background: Container(
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.only(left: 20),
-                  color: Colors.blue,
-                  child: const Icon(Icons.edit, color: Colors.white),
-                ),
-                secondaryBackground: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  color: Colors.red,
-                  child: const Icon(Icons.delete_outline, color: Colors.white),
-                ),
-                confirmDismiss: (direction) async {
-                  if (direction == DismissDirection.startToEnd) {
-                    await _editItemDialog(
-                      itemId: itemId.toString(),
-                      currentText: text,
-                      currentCategory: (item["category"] ?? "autres").toString(),
-                      currentQuantity: item["quantity"],
-                      currentUnit: item["unit"]?.toString(),
-                    );
-                  } else {
-                    await _deleteItem(itemId: itemId.toString());
-                  }
-                  return false;
-                },
-                child: _InlineEditTile(
-                  key: ValueKey('tile-$itemId'),
-                  text: text,
-                  display: text,
-                  done: done,
-                  onToggle: () => _toggleDone(itemId: itemId.toString(), newValue: !done),
-                  onRename: (newText) async {
-                    await _api.renameItem(
-                      listName: widget.listKey,
-                      itemId: itemId.toString(),
-                      text: newText,
-                    );
-                    _reload();
+              // ReorderableListView exige que la Key soit directement sur le
+              // widget enfant direct — on enveloppe _AnimatedItem dans un
+              // widget qui porte la bonne key pour le reorderable.
+              return _AnimatedItem(
+                key: ValueKey('anim-$itemId'),
+                index: idx,
+                child: Dismissible(
+                  key: ValueKey('inline-$itemId'),
+                  direction: DismissDirection.horizontal,
+                  background: Container(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.only(left: 20),
+                    color: Colors.blue,
+                    child: const Icon(Icons.edit, color: Colors.white),
+                  ),
+                  secondaryBackground: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    color: Colors.red,
+                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                  ),
+                  confirmDismiss: (direction) async {
+                    if (direction == DismissDirection.startToEnd) {
+                      await _editItemDialog(
+                        itemId: itemId.toString(),
+                        currentText: text,
+                        currentCategory: (item["category"] ?? "autres").toString(),
+                        currentQuantity: item["quantity"],
+                        currentUnit: item["unit"]?.toString(),
+                      );
+                    } else {
+                      await _deleteItem(itemId: itemId.toString());
+                    }
+                    return false;
                   },
+                  child: _InlineEditTile(
+                    key: ValueKey('tile-$itemId'),
+                    text: text,
+                    display: text,
+                    done: done,
+                    onToggle: () => _toggleDone(itemId: itemId.toString(), newValue: !done),
+                    onRename: (newText) async {
+                      await _api.renameItem(
+                        listName: widget.listKey,
+                        itemId: itemId.toString(),
+                        text: newText,
+                      );
+                      _reload();
+                    },
+                  ),
                 ),
               );
             }).toList(),
@@ -773,6 +974,10 @@ class _ListDetailPageState extends State<ListDetailPage> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// _InlineEditTile (inchangé)
+// ---------------------------------------------------------------------------
 
 class _InlineEditTile extends StatefulWidget {
   final String text;

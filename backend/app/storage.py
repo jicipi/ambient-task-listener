@@ -797,6 +797,86 @@ def update_shopping_item(
         return True
 
 
+# =========================
+# Category order
+# =========================
+
+def get_category_order(list_name: str) -> list[str]:
+    """Retourne les catégories dans l'ordre persisté.
+    Les catégories non-listées (présentes dans les items mais absentes de la table)
+    sont ajoutées à la fin, triées alphabétiquement.
+    """
+    conn = _get_db()
+    try:
+        ordered_rows = conn.execute(
+            "SELECT category FROM category_order WHERE list_name = ? ORDER BY position",
+            (list_name,),
+        ).fetchall()
+        ordered = [r["category"] for r in ordered_rows]
+
+        # Récupère toutes les catégories effectivement présentes dans la liste
+        cat_rows = conn.execute(
+            "SELECT DISTINCT LOWER(COALESCE(category, 'autres')) AS cat FROM items WHERE list_name = ?",
+            (list_name,),
+        ).fetchall()
+        all_cats = {r["cat"] for r in cat_rows}
+    finally:
+        conn.close()
+
+    ordered_set = set(ordered)
+    extra = sorted(c for c in all_cats if c not in ordered_set)
+    return ordered + extra
+
+
+def set_category_order(list_name: str, categories: list[str]) -> bool:
+    """Persiste l'ordre des catégories pour une liste donnée."""
+    with _lock:
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute(
+                    "DELETE FROM category_order WHERE list_name = ?", (list_name,)
+                )
+                conn.executemany(
+                    "INSERT INTO category_order (list_name, category, position) VALUES (?, ?, ?)",
+                    [(list_name, cat, pos) for pos, cat in enumerate(categories)],
+                )
+        finally:
+            conn.close()
+    return True
+
+
+# =========================
+# Settings
+# =========================
+
+def get_setting(key: str, default: str) -> str:
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with _lock:
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO settings (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    (key, value),
+                )
+        finally:
+            conn.close()
+
+
 def reorder_list(list_name: str, ordered_ids: list[str]) -> bool:
     if list_name not in FILES:
         return False

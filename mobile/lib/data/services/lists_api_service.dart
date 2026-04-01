@@ -175,6 +175,32 @@ class ListsApiService {
     return response.statusCode == 200;
   }
 
+  Future<List<String>> fetchCategoryOrder(String listName) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.get(
+      Uri.parse('$baseUrl/lists/$listName/category-order'),
+    );
+
+    if (response.statusCode != 200) return [];
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final cats = data['categories'] as List?;
+    return cats?.map((e) => e.toString()).toList() ?? [];
+  }
+
+  Future<bool> updateCategoryOrder(
+      String listName, List<String> categories) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.put(
+      Uri.parse('$baseUrl/lists/$listName/category-order'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'categories': categories}),
+    );
+
+    if (response.statusCode != 200) return false;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['ok'] == true;
+  }
+
   Future<int> fetchPendingCount() async {
     final items = await fetchPendingItems();
     return items.length;
@@ -188,5 +214,39 @@ class ListsApiService {
       counts[listName] = (counts[listName] ?? 0) + 1;
     }
     return counts;
+  }
+
+  Future<Map<String, double>> fetchConfidenceSettings() async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.get(Uri.parse('$baseUrl/settings/confidence'));
+
+    if (response.statusCode != 200) {
+      throw Exception('Impossible de charger les seuils de confiance');
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return {
+      'add_threshold': (data['add_threshold'] as num).toDouble(),
+      'ignore_threshold': (data['ignore_threshold'] as num).toDouble(),
+    };
+  }
+
+  Future<bool> updateConfidenceSettings({
+    required double addThreshold,
+    required double ignoreThreshold,
+  }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.put(
+      Uri.parse('$baseUrl/settings/confidence'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'add_threshold': addThreshold,
+        'ignore_threshold': ignoreThreshold,
+      }),
+    );
+
+    if (response.statusCode != 200) return false;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['ok'] == true;
   }
 }
