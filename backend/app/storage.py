@@ -795,3 +795,38 @@ def update_shopping_item(
             conn.close()
 
         return True
+
+
+def reorder_list(list_name: str, ordered_ids: list[str]) -> bool:
+    if list_name not in FILES:
+        return False
+
+    with _lock:
+        conn = _get_db()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM items WHERE list_name = ?", (list_name,)
+            ).fetchall()
+            items = [dict(r) for r in rows]
+
+            id_to_item = {item["id"]: item for item in items}
+            reordered = [id_to_item[i] for i in ordered_ids if i in id_to_item]
+            remaining = [item for item in items if item["id"] not in set(ordered_ids)]
+            reordered.extend(remaining)
+
+            conn.execute("DELETE FROM items WHERE list_name = ?", (list_name,))
+            for item in reordered:
+                conn.execute(
+                    """INSERT INTO items (id, list_name, text, done, quantity, unit, category, scheduled_date)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        item["id"], item["list_name"], item["text"],
+                        item["done"], item["quantity"], item["unit"],
+                        item["category"], item["scheduled_date"],
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return True
