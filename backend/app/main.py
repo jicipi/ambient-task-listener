@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.action_extractor import extract_action_with_fallback as extract_action
 from app.schemas import TextInput, ListItemInput, UpdateItemInput, RenameItemInput, ReorderInput
+from app.transcript_log import get_recent_logs, correct_log_entry
 from app.storage import (
     add_item,
     get_all_lists,
@@ -379,3 +380,21 @@ async def audio_to_action(file: UploadFile = File(...)) -> dict:
         "transcript": transcript,
         **{k: v for k, v in action.items() if k != "transcript"},
     }
+
+
+class TranscriptCorrectPayload(BaseModel):
+    action_index: int
+    correction: dict
+
+
+@app.get("/transcript-logs")
+def list_transcript_logs(n: int = 50) -> list[dict]:
+    return get_recent_logs(n)
+
+
+@app.post("/transcript-logs/{log_id}/correct")
+def post_transcript_log_correction(log_id: str, payload: TranscriptCorrectPayload) -> dict:
+    ok = correct_log_entry(log_id, payload.action_index, payload.correction)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Log entry or action not found")
+    return {"ok": True}

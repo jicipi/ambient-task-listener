@@ -9,3 +9,4 @@ __pycache__/
 # data locale
 backend/data/*.json
 backend/data/*.db
+backend/data/transcripts.jsonl

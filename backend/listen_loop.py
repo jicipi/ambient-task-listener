@@ -7,11 +7,11 @@ from scipy.io.wavfile import write
 from app.transcription import transcribe_audio_file
 from app.multi_action import extract_multiple_actions
 from app.cleaning import normalize_transcript, clean_item
-from app.cleaning import parse_shopping_item
 from app.storage import add_item
 from app.storage import add_pending_item
 from app.vad_listener import VADRecorder
 from app.fuzzy_corrector import correct_item
+from app.transcript_log import log_transcript
 
 
 import requests
@@ -79,23 +79,15 @@ def process_audio(audio_bytes):
 
                 added = add_item(action["list"], item, transcript)
 
-                if action["list"] == "shopping":
-                    parsed = parse_shopping_item(item)
-                    display_text = parsed["text"]
-
-                    if parsed["quantity"] is not None:
-                        if parsed["unit"]:
-                            display_text = f'{parsed["quantity"]} {parsed["unit"]} {parsed["text"]}'
-                        else:
-                            display_text = f'{parsed["quantity"]} {parsed["text"]}'
-                else:
-                    display_text = item
+                display_text = item
 
                 if added:
                     print("→ ajouté dans", action["list"], ":", display_text)
                     notify_backend("update")
                 else:
                     print("→ déjà présent dans", action["list"], ":", display_text)
+
+        log_transcript(transcript, actions)
 
     finally:
         Path(wav_path).unlink(missing_ok=True)

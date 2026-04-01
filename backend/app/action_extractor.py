@@ -105,6 +105,7 @@ SHOPPING_PATTERNS = [
     r"je\s+devrais\s+ach[eè]t\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     r"je\s+vais\s+devoir\s+ach[eè]t\w*\s+(.+?)(?:\s+à\s+la\s+liste)?$",
     rf"(?:{LEADERS})?\s*(?:ach[eè]t\w*|rach[eè]t\w*|command\w*|ajout\w*|rajout\w*|prendre)\s+(.+?)(?:\s+à\s+la\s+liste)?$",
+    r"on\s+a\s+(?:bientôt|presque|presque\s+plus)\s+plus\s+de\s+(.+?)(?:\s*,.*)?$",
     r"on\s+n[' ]?a\s+plus\s+de\s+(.+)",
     r"il\s+nous\s+faut\s+(.+)",
     r"rajoute\s+(.+?)(?:\s+à\s+la\s+liste)?$",
@@ -125,6 +126,8 @@ TODO_PATTERNS = [
     rf"(?:{PERSONAL_LEADERS})\s*penser\s+à\s+(.+)",
     r"pense\s+à\s+(.+)",
     r"n[‘’]oublie\s+pas\s+de\s+(.+)",
+    r"(?:il faut que j[‘’]|je dois|je devrais|faut que j[‘’]|il faudrait que j[‘’])\s*emm[eè]ne?\s+(.+)$",
+    r"(?:il faut|il faudrait|faut|pense à|n’oublie pas de)\s+emm[eè]ner?\s+(.+)$",
     # Impératifs nus (dans un segment multi-actions isolé du contexte)
     r"^appell\w*\s+(?:le|la|les|l[‘’]|un|une|du|de|au|à)?\s*(.+)",
     r"^envoie\s+(?:le|la|les|l[‘’]|un|une|du|de|à)?\s*(.+)",
@@ -327,6 +330,10 @@ def extract_action(text: str) -> dict[str, Any]:
     if appointment:
         return appointment
 
+    ADVERB_ONLY_ITEMS = {
+        "beaucoup", "assez", "trop", "peu", "plein", "encore", "plus", "moins", "autant",
+    }
+
     shopping = match_patterns(
         normalized,
         transcript,
@@ -337,6 +344,15 @@ def extract_action(text: str) -> dict[str, Any]:
     )
     if shopping:
         item_text = shopping.get("item") or ""
+        if item_text.strip().lower() in ADVERB_ONLY_ITEMS:
+            return build_result(
+                transcript=transcript,
+                intent="unknown",
+                item=None,
+                confidence=0.0,
+                list_name="inbox",
+                needs_confirmation=False,
+            )
         if is_likely_shopping_mishearing(item_text):
             shopping["confidence"] = min(shopping.get("confidence", 0.8), 0.45)
             shopping["needs_confirmation"] = True
