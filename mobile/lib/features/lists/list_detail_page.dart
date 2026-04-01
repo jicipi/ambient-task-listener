@@ -517,7 +517,7 @@ class _ListDetailPageState extends State<ListDetailPage> {
   }) async {
     final textController = TextEditingController(text: currentText);
     final quantityController = TextEditingController(
-      text: currentQuantity != null ? currentQuantity.toString() : '',
+      text: currentQuantity != null ? _formatQty(currentQuantity) : '',
     );
     String? selectedUnit = currentUnit;
     String selectedCategory = currentCategory;
