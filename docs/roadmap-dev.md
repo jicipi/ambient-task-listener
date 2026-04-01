@@ -93,9 +93,9 @@ Objectif : améliorer la fiabilité de l'extraction d'actions.
 Objectif : poser le socle technique avant d'aller plus loin. Sans cette phase, chaque refacto risque de casser silencieusement ce qui fonctionne.
 
 ## Persistance
-- [ ] migration JSON → SQLite (thread-safety, intégrité, pas de corruption)
+- [x] migration JSON → SQLite (thread-safety, intégrité, pas de corruption)
 - [x] verrou threading.RLock sur les écritures JSON
-- [ ] script de migration des données existantes
+- [x] script de migration des données existantes
 
 ## Tests backend
 - [x] setup pytest + structure de tests
@@ -158,7 +158,7 @@ Objectif : rendre l'app réellement utilisable au quotidien, pas juste démontra
 - [x] swipe gestures (delete / edit) — toutes les listes, swipe droit = édition, gauche = suppression
 
 ## Priorité normale
-- [ ] tri manuel / bouton de tri
+- [x] tri manuel (drag & drop todo/ideas)
 - [ ] ordre de catégories personnalisé
 - [ ] animations d'apparition des tâches
 
