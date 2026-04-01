@@ -5,6 +5,15 @@ import '../../data/services/lists_api_service.dart';
 import '../../core/config/api_config.dart';
 import 'shopping_mode_page.dart';
 
+/// Formate une quantité : entier si pas de décimales, virgule française sinon.
+/// Ex: 6.0 → "6", 1.5 → "1,5", 0.75 → "0,75"
+String _formatQty(dynamic qty) {
+  if (qty == null) return '';
+  final d = (qty is num) ? qty.toDouble() : double.tryParse(qty.toString()) ?? 0.0;
+  if (d == d.truncateToDouble()) return d.toInt().toString();
+  return d.toString().replaceAll('.', ',');
+}
+
 // ---------------------------------------------------------------------------
 // _AnimatedItem — FadeTransition + légère translation verticale à l'apparition
 // ---------------------------------------------------------------------------
@@ -832,9 +841,9 @@ class _ListDetailPageState extends State<ListDetailPage> {
 
                     String display = text;
                     if (quantity != null && unit != null) {
-                      display = "$quantity $unit $text";
+                      display = "${_formatQty(quantity)} $unit $text";
                     } else if (quantity != null) {
-                      display = "$quantity $text";
+                      display = "${_formatQty(quantity)} $text";
                     }
 
                     return _AnimatedItem(

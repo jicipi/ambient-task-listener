@@ -4,6 +4,13 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/services/lists_api_service.dart';
 import '../../core/config/api_config.dart';
 
+String _formatQty(dynamic qty) {
+  if (qty == null) return '';
+  final d = (qty is num) ? qty.toDouble() : double.tryParse(qty.toString()) ?? 0.0;
+  if (d == d.truncateToDouble()) return d.toInt().toString();
+  return d.toString().replaceAll('.', ',');
+}
+
 class ShoppingModePage extends StatefulWidget {
   const ShoppingModePage({super.key});
 
@@ -233,9 +240,9 @@ class _ShoppingTile extends StatelessWidget {
 
     String display = text;
     if (quantity != null && unit != null) {
-      display = "$quantity $unit $text";
+      display = "${_formatQty(quantity)} $unit $text";
     } else if (quantity != null) {
-      display = "$quantity $text";
+      display = "${_formatQty(quantity)} $text";
     }
 
     return Dismissible(
