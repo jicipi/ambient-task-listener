@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-import json
 import threading
 from pathlib import Path
 from datetime import datetime
@@ -10,6 +9,7 @@ from difflib import SequenceMatcher
 from app.cleaning import parse_shopping_item
 from app.unit_conversion import units_are_compatible, merge_quantities
 from app.date_parser import parse_french_date
+import app.database as _db_module
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,9 +25,8 @@ FILES = {
     "ideas": DATA_DIR / "ideas.json",
 }
 
-# RLock (reentrant) : certaines fonctions publiques s'appellent entre elles
-# (ex: approve_pending_item → add_item)
-_lock = threading.RLock()
+# RLock réentrant partagé avec database.py
+_lock = _db_module._lock
 
 STOP_ITEMS = {
     "oui",
@@ -60,28 +59,30 @@ LEADING_ACTION_WORDS = {
     "réserver",
 }
 
+# Initialisation de la base au démarrage du module
+_db_module.init_db()
+
+
+# =========================
+# Helpers internes DB
+# =========================
+
+def _get_db():
+    """Raccourci pour obtenir une connexion depuis le module database."""
+    return _db_module.get_db()
+
 
 # =========================
 # Pending
 # =========================
 
-def _load_pending() -> list:
-    if not PENDING_FILE.exists():
-        return []
-    try:
-        with open(PENDING_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def _save_pending(data: list) -> None:
-    with open(PENDING_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def get_pending_items() -> list[dict]:
-    return _load_pending()
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM pending ORDER BY created_at").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def add_pending_item(action: dict) -> None:
@@ -91,44 +92,54 @@ def add_pending_item(action: dict) -> None:
 
     parsed = parse_shopping_item(item) if list_name == "shopping" and item else None
 
-    # Parse scheduled_date for appointments
     scheduled_date: str | None = None
     intent = action.get("intent")
     if intent == "appointment_add" and transcript:
         scheduled_date = parse_french_date(transcript)
 
-    entry = {
-        "id": str(uuid.uuid4()),
-        "transcript": transcript,
-        "intent": intent,
-        "item": parsed["text"] if parsed else item,
-        "quantity": parsed["quantity"] if parsed else None,
-        "unit": parsed["unit"] if parsed else None,
-        "list": list_name,
-        "confidence": action.get("confidence"),
-        "time_hint": action.get("time_hint"),
-        "scheduled_date": scheduled_date,
-        "source": action.get("source"),
-        "decision": action.get("decision"),
-        "created_at": datetime.utcnow().isoformat(),
-    }
+    entry_id = str(uuid.uuid4())
+    item_text = parsed["text"] if parsed else item
+    quantity = parsed["quantity"] if parsed else None
+    unit = parsed["unit"] if parsed else None
+    confidence = action.get("confidence")
+    time_hint = action.get("time_hint")
+    source = action.get("source")
+    decision = action.get("decision")
+    created_at = datetime.utcnow().isoformat()
 
     with _lock:
-        data = _load_pending()
-        data.append(entry)
-        _save_pending(data)
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO pending
+                        (id, transcript, intent, item, list_name, confidence,
+                         time_hint, scheduled_date, source, decision, quantity,
+                         unit, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        entry_id, transcript, intent, item_text, list_name,
+                        confidence, time_hint, scheduled_date, source, decision,
+                        quantity, unit, created_at,
+                    ),
+                )
+        finally:
+            conn.close()
 
 
 def reject_pending_item(item_id: str) -> bool:
     with _lock:
-        data = _load_pending()
-        new_data = [entry for entry in data if entry.get("id") != item_id]
-
-        if len(new_data) == len(data):
-            return False
-
-        _save_pending(new_data)
-        return True
+        conn = _get_db()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "DELETE FROM pending WHERE id = ?", (item_id,)
+                )
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
 
 def approve_pending_item(
@@ -140,26 +151,28 @@ def approve_pending_item(
     override_scheduled_date: str | None = None,
 ) -> bool:
     with _lock:
-        data = _load_pending()
+        conn = _get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM pending WHERE id = ?", (item_id,)
+            ).fetchone()
+        finally:
+            conn.close()
 
-        target = None
-        remaining = []
-
-        for entry in data:
-            if entry.get("id") == item_id:
-                target = entry
-            else:
-                remaining.append(entry)
-
-        if target is None:
+        if row is None:
             return False
 
-        list_name = override_list or target.get("list")
+        target = dict(row)
+        list_name = override_list or target.get("list_name")
         item = override_text or target.get("item")
         quantity = override_quantity if override_quantity is not None else target.get("quantity")
         unit = override_unit if override_unit is not None else target.get("unit")
         transcript = target.get("transcript")
-        scheduled_date = override_scheduled_date if override_scheduled_date is not None else target.get("scheduled_date")
+        scheduled_date = (
+            override_scheduled_date
+            if override_scheduled_date is not None
+            else target.get("scheduled_date")
+        )
 
         if not list_name or not item:
             return False
@@ -173,30 +186,19 @@ def approve_pending_item(
             scheduled_date=scheduled_date,
         )
 
-        _save_pending(remaining)
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute("DELETE FROM pending WHERE id = ?", (item_id,))
+        finally:
+            conn.close()
+
         return True
 
 
 # =========================
-# Lists
+# Item helpers
 # =========================
-
-def _load_list(list_name: str) -> list:
-    path = FILES[list_name]
-    if not path.exists():
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def _save_list(list_name: str, data: list) -> None:
-    path = FILES[list_name]
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
 
 def _normalize_item(text: str) -> str:
     if not text:
@@ -211,16 +213,12 @@ def _apply_common_corrections(text: str) -> str:
 
 def _is_valid_item(text: str) -> bool:
     normalized = _normalize_item(text)
-
     if not normalized:
         return False
-
     if len(normalized) < 3:
         return False
-
     if normalized in STOP_ITEMS:
         return False
-
     return True
 
 
@@ -244,6 +242,82 @@ def _canonicalize_for_dedupe(list_name: str, text: str) -> str:
         text = " ".join(words)
 
     return text
+
+
+# =========================
+# Learning (catégories / synonymes)
+# =========================
+
+def learn_category(item_text: str, category: str) -> None:
+    if not item_text or not category:
+        return
+
+    key = item_text.strip().lower()
+    val = category.strip().lower()
+
+    conn = _get_db()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO learning_categories (item_text, category)
+                VALUES (?, ?)
+                ON CONFLICT(item_text) DO UPDATE SET category = excluded.category
+                """,
+                (key, val),
+            )
+    finally:
+        conn.close()
+
+
+def learn_synonym(original: str, normalized: str) -> None:
+    if not original or not normalized:
+        return
+
+    key = original.strip().lower()
+    val = normalized.strip().lower()
+
+    conn = _get_db()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO learning_synonyms (original, normalized)
+                VALUES (?, ?)
+                ON CONFLICT(original) DO UPDATE SET normalized = excluded.normalized
+                """,
+                (key, val),
+            )
+    finally:
+        conn.close()
+
+
+def apply_synonym(text: str) -> str:
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT normalized FROM learning_synonyms WHERE original = ?",
+            (text.strip().lower(),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row:
+        return row["normalized"]
+    return text
+
+
+def _get_learned_category(item_text: str) -> str | None:
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT category FROM learning_categories WHERE item_text = ?",
+            (item_text.strip().lower(),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return row["category"] if row else None
 
 
 # =========================
@@ -278,7 +352,15 @@ def add_item(
         category = parsed.get("category")
 
     with _lock:
-        data = _load_list(list_name)
+        conn = _get_db()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM items WHERE list_name = ?", (list_name,)
+            ).fetchall()
+            data = [dict(r) for r in rows]
+        finally:
+            conn.close()
+
         canonical_item = _canonicalize_for_dedupe(list_name, final_text)
 
         for existing in data:
@@ -303,17 +385,16 @@ def add_item(
                     merged = merge_quantities(existing_quantity, existing_unit, quantity, unit)
                     if merged is not None:
                         new_qty, new_unit = merged
-                        existing["quantity"] = new_qty
-                        existing["unit"] = new_unit
                     else:
-                        existing["quantity"] = existing_quantity + quantity
-                    existing["text"] = final_text
+                        new_qty = existing_quantity + quantity
+                        new_unit = existing_unit
 
+                    _update_shopping_fields(
+                        existing["id"], final_text, new_qty, new_unit,
+                        category or existing.get("category"),
+                    )
                     if category:
-                        existing["category"] = category
                         learn_category(final_text, category)
-
-                    _save_list(list_name, data)
                     return True
 
                 # 2) Enrichissement : ancien sans quantité, nouveau avec quantité,
@@ -323,80 +404,133 @@ def add_item(
                     and existing_quantity is None
                     and units_compatible
                 ):
-                    existing["text"] = final_text
-                    existing["quantity"] = quantity
-                    existing["unit"] = unit
-
+                    _update_shopping_fields(
+                        existing["id"], final_text, quantity, unit,
+                        category or existing.get("category"),
+                    )
                     if category:
-                        existing["category"] = category
                         learn_category(final_text, category)
-
-                    _save_list(list_name, data)
                     return True
 
                 # 3) Nouveau sans quantité, ancien avec quantité ET sans unité
-                # ex: "poires" + "10 poires" => on garde 10 poires
                 if (
                     quantity is None
                     and existing_quantity is not None
                     and existing_unit is None
                 ):
-                    existing["text"] = final_text
-
+                    _update_shopping_fields(
+                        existing["id"], final_text, existing_quantity, existing_unit,
+                        category or existing.get("category"),
+                    )
                     if category:
-                        existing["category"] = category
                         learn_category(final_text, category)
-
-                    _save_list(list_name, data)
                     return True
 
                 # 4) Deux items sans quantité
                 if quantity is None and existing_quantity is None:
-                    existing["text"] = final_text
-
+                    _update_shopping_fields(
+                        existing["id"], final_text, None, None,
+                        category or existing.get("category"),
+                    )
                     if category:
-                        existing["category"] = category
                         learn_category(final_text, category)
-
-                    _save_list(list_name, data)
                     return True
 
-                # 5) Sinon, unités incompatibles → ne pas fusionner, continuer la recherche
+                # 5) Unités incompatibles → ne pas fusionner
                 continue
 
         # For appointments: parse scheduled_date from transcript if not provided
         if list_name == "appointments" and scheduled_date is None and source_transcript:
             scheduled_date = parse_french_date(source_transcript)
 
-        entry = {
-            "id": str(uuid.uuid4()),
-            "text": final_text,
-            "quantity": quantity,
-            "unit": unit,
-            "category": category,
-            "created_at": datetime.utcnow().isoformat(),
-            "source_transcript": source_transcript,
-            "scheduled_date": scheduled_date if list_name == "appointments" else None,
-            "done": False,
-        }
+        item_id = str(uuid.uuid4())
+        created_at = datetime.utcnow().isoformat()
 
-        data.append(entry)
-        _save_list(list_name, data)
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO items
+                        (id, list_name, text, done, quantity, unit, category,
+                         scheduled_date, created_at, source_transcript)
+                    VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item_id, list_name, final_text, quantity, unit, category,
+                        scheduled_date if list_name == "appointments" else None,
+                        created_at, source_transcript,
+                    ),
+                )
+        finally:
+            conn.close()
+
         return True
+
+
+def _update_shopping_fields(
+    item_id: str,
+    text: str,
+    quantity,
+    unit,
+    category,
+) -> None:
+    conn = _get_db()
+    try:
+        with conn:
+            conn.execute(
+                """
+                UPDATE items
+                SET text = ?, quantity = ?, unit = ?, category = ?
+                WHERE id = ?
+                """,
+                (text, quantity, unit, category, item_id),
+            )
+    finally:
+        conn.close()
 
 
 # =========================
 # Public API
 # =========================
 
+def _rows_to_list(rows) -> list[dict]:
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["done"] = bool(d.get("done", 0))
+        result.append(d)
+    return result
+
+
 def get_all_lists() -> dict:
-    return {name: _load_list(name) for name in FILES.keys()}
+    conn = _get_db()
+    try:
+        result = {}
+        for name in FILES.keys():
+            rows = conn.execute(
+                "SELECT * FROM items WHERE list_name = ? ORDER BY created_at",
+                (name,),
+            ).fetchall()
+            result[name] = _rows_to_list(rows)
+        return result
+    finally:
+        conn.close()
 
 
 def get_list(list_name: str) -> list:
     if list_name not in FILES:
         return []
-    return _load_list(list_name)
+
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM items WHERE list_name = ? ORDER BY created_at",
+            (list_name,),
+        ).fetchall()
+        return _rows_to_list(rows)
+    finally:
+        conn.close()
 
 
 def delete_item(list_name: str, item_id: str) -> bool:
@@ -404,14 +538,16 @@ def delete_item(list_name: str, item_id: str) -> bool:
         return False
 
     with _lock:
-        data = _load_list(list_name)
-        new_data = [entry for entry in data if entry.get("id") != item_id]
-
-        if len(new_data) == len(data):
-            return False
-
-        _save_list(list_name, new_data)
-        return True
+        conn = _get_db()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "DELETE FROM items WHERE id = ? AND list_name = ?",
+                    (item_id, list_name),
+                )
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
 
 def update_item_done(list_name: str, item_id: str, done: bool) -> bool:
@@ -419,15 +555,16 @@ def update_item_done(list_name: str, item_id: str, done: bool) -> bool:
         return False
 
     with _lock:
-        data = _load_list(list_name)
-
-        for entry in data:
-            if entry.get("id") == item_id:
-                entry["done"] = done
-                _save_list(list_name, data)
-                return True
-
-    return False
+        conn = _get_db()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "UPDATE items SET done = ? WHERE id = ? AND list_name = ?",
+                    (1 if done else 0, item_id, list_name),
+                )
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
 
 def rename_item(list_name: str, item_id: str, text: str) -> bool:
@@ -440,48 +577,63 @@ def rename_item(list_name: str, item_id: str, text: str) -> bool:
         return False
 
     if list_name == "shopping":
-        data = _load_list(list_name)
+        conn = _get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM items WHERE id = ? AND list_name = 'shopping'",
+                (item_id,),
+            ).fetchone()
+        finally:
+            conn.close()
 
-        for entry in data:
-            if entry.get("id") == item_id:
-                return update_shopping_item(
-                    item_id=item_id,
-                    text=corrected_text,
-                    quantity=None,
-                    unit=None,
-                    category=entry.get("category"),
+        if row is None:
+            return False
+
+        return update_shopping_item(
+            item_id=item_id,
+            text=corrected_text,
+            quantity=None,
+            unit=None,
+            category=dict(row).get("category"),
+        )
+
+    with _lock:
+        conn = _get_db()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "UPDATE items SET text = ? WHERE id = ? AND list_name = ?",
+                    (text.strip(), item_id, list_name),
                 )
-        return False
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
-    data = _load_list(list_name)
-
-    for entry in data:
-        if entry.get("id") == item_id:
-            entry["text"] = text.strip()
-            _save_list(list_name, data)
-            return True
-
-    return False
-    
 
 def update_item_category(list_name: str, item_id: str, category: str) -> bool:
     if list_name != "shopping" or not category:
         return False
 
-    data = _load_list(list_name)
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM items WHERE id = ? AND list_name = 'shopping'",
+            (item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
-    for entry in data:
-        if entry.get("id") == item_id:
-            return update_shopping_item(
-                item_id=item_id,
-                text=entry.get("text", ""),
-                quantity=entry.get("quantity"),
-                unit=entry.get("unit"),
-                category=category,
-            )
+    if row is None:
+        return False
 
-    return False
-
+    entry = dict(row)
+    return update_shopping_item(
+        item_id=item_id,
+        text=entry.get("text", ""),
+        quantity=entry.get("quantity"),
+        unit=entry.get("unit"),
+        category=category,
+    )
 
 
 def update_item_scheduled_date(list_name: str, item_id: str, scheduled_date: str | None) -> bool:
@@ -489,59 +641,21 @@ def update_item_scheduled_date(list_name: str, item_id: str, scheduled_date: str
         return False
 
     with _lock:
-        data = _load_list(list_name)
-        for entry in data:
-            if entry.get("id") == item_id:
-                entry["scheduled_date"] = scheduled_date
-                _save_list(list_name, data)
-                return True
-
-    return False
-
-
-def _load_learning() -> dict:
-    if not LEARNING_FILE.exists():
-        return {"categories": {}, "synonyms": {}}
-
-    try:
-        with open(LEARNING_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-            if not isinstance(data, dict):
-                return {"categories": {}, "synonyms": {}}
-
-            data.setdefault("categories", {})
-            data.setdefault("synonyms", {})
-            return data
-
-    except Exception:
-        return {"categories": {}, "synonyms": {}}
+        conn = _get_db()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "UPDATE items SET scheduled_date = ? WHERE id = ? AND list_name = ?",
+                    (scheduled_date, item_id, list_name),
+                )
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
 
-def _save_learning(data: dict) -> None:
-    with open(LEARNING_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def learn_category(item_text: str, category: str) -> None:
-    if not item_text or not category:
-        return
-
-    data = _load_learning()
-
-    data["categories"][item_text.strip().lower()] = category.strip().lower()
-
-    _save_learning(data)
-
-
-def learn_synonym(original: str, normalized: str) -> None:
-    if not original or not normalized:
-        return
-
-    data = _load_learning()
-    data["synonyms"][original.strip().lower()] = normalized.strip().lower()
-    _save_learning(data)
-
+# =========================
+# update_shopping_item (full update with merge)
+# =========================
 
 def _normalize_category(category: str | None) -> str:
     if not category:
@@ -569,28 +683,23 @@ def _merge_shopping_entries(target: dict, source: dict) -> None:
     unit_target = target.get("unit")
     unit_source = source.get("unit")
 
-    # quantité
     if qty_target is not None and qty_source is not None:
         merged = merge_quantities(qty_target, unit_target, qty_source, unit_source)
         if merged is not None:
             new_qty, new_unit = merged
             target["quantity"] = new_qty
             target["unit"] = new_unit
-        # else: incompatible units, keep target as-is
     elif qty_target is None and qty_source is not None:
         target["quantity"] = qty_source
-        # unité
         if unit_target is None and unit_source is not None:
             target["unit"] = unit_source
 
-    # catégorie
     cat_target = _normalize_category(target.get("category"))
     cat_source = _normalize_category(source.get("category"))
 
     if cat_target == "autres" and cat_source != "autres":
         target["category"] = cat_source
 
-    # transcript
     if not target.get("source_transcript") and source.get("source_transcript"):
         target["source_transcript"] = source.get("source_transcript")
 
@@ -620,47 +729,69 @@ def update_shopping_item(
     )
 
     with _lock:
-        data = _load_list("shopping")
-        target = None
+        conn = _get_db()
+        try:
+            target_row = conn.execute(
+                "SELECT * FROM items WHERE id = ? AND list_name = 'shopping'",
+                (item_id,),
+            ).fetchone()
 
-        for entry in data:
-            if entry.get("id") == item_id:
-                target = entry
-                break
+            if target_row is None:
+                return False
 
-        if target is None:
-            return False
+            target = dict(target_row)
 
-        # on met à jour l'item cible
-        target["text"] = final_text
-        target["quantity"] = final_quantity
-        target["unit"] = final_unit
-        target["category"] = final_category
+            # Met à jour les champs du target
+            target["text"] = final_text
+            target["quantity"] = final_quantity
+            target["unit"] = final_unit
+            target["category"] = final_category
 
-        # apprentissage catégorie
-        if final_text and final_category != "autres":
-            learn_category(final_text, final_category)
+            # Apprentissage catégorie
+            if final_text and final_category != "autres":
+                learn_category(final_text, final_category)
 
-        # tentative de fusion avec un autre item compatible
+            # Cherche un doublon mergeable
+            all_rows = conn.execute(
+                "SELECT * FROM items WHERE list_name = 'shopping' AND id != ?",
+                (item_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
         duplicate = None
-        for entry in data:
-            if entry.get("id") == item_id:
-                continue
+        for row in all_rows:
+            entry = dict(row)
             if _shopping_items_can_merge(target, entry):
                 duplicate = entry
                 break
 
         if duplicate is not None:
-            # on fusionne le duplicate dans target, puis on supprime duplicate
             _merge_shopping_entries(target, duplicate)
-            data = [entry for entry in data if entry.get("id") != duplicate.get("id")]
 
-        _save_list("shopping", data)
+        conn = _get_db()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    UPDATE items
+                    SET text = ?, quantity = ?, unit = ?, category = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        target["text"],
+                        target["quantity"],
+                        target["unit"],
+                        target["category"],
+                        item_id,
+                    ),
+                )
+
+                if duplicate is not None:
+                    conn.execute(
+                        "DELETE FROM items WHERE id = ?", (duplicate["id"],)
+                    )
+        finally:
+            conn.close()
+
         return True
-
-
-def apply_synonym(text: str) -> str:
-    data = _load_learning()
-    synonyms = data.get("synonyms", {})
-
-    return synonyms.get(text.strip().lower(), text)

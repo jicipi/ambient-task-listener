@@ -100,6 +100,22 @@ class ListsApiService {
     return data['updated'] == true;
   }
 
+  Future<bool> reorderItems({
+    required String listName,
+    required List<String> ids,
+  }) async {
+    final baseUrl = await ApiConfig.getBaseUrl();
+    final response = await http.patch(
+      Uri.parse('$baseUrl/lists/$listName/reorder'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'ids': ids}),
+    );
+
+    if (response.statusCode != 200) return false;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['reordered'] == true;
+  }
+
   Future<bool> updateItemCategory({
     required String listName,
     required String itemId,

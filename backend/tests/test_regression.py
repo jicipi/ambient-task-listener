@@ -5,51 +5,43 @@ Regression tests for bugs fixed in the refactoring session:
   3. Quantity is NOT duplicated in the stored text after rename with qty
   4. Quantity fusion: 20 poires + 3 poires = 23 poires (one entry)
 """
-import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ---------------------------------------------------------------------------
-# Fixtures (mirrors test_storage.py approach)
+# Fixtures (mirrors test_storage.py approach — SQLite isolated DB)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def data_dir(tmp_path):
-    for name in ["shopping", "todo", "todo_pro", "appointments", "ideas"]:
-        (tmp_path / f"{name}.json").write_text("[]")
-    (tmp_path / "pending.json").write_text("[]")
-    (tmp_path / "user_learning.json").write_text(
-        '{"categories": {}, "synonyms": {}}'
-    )
-    return tmp_path
-
-
-@pytest.fixture
-def storage(data_dir):
+def storage(tmp_path):
+    import app.database as _db
     import app.storage as _storage
-    import app.user_learning as _ul
+
+    db_file = str(tmp_path / "test_ambient.db")
+    _db.set_db_path(db_file)
+    _db.init_db()
 
     new_files = {
-        "shopping":     data_dir / "shopping.json",
-        "todo":         data_dir / "todo.json",
-        "todo_pro":     data_dir / "todo_pro.json",
-        "appointments": data_dir / "appointments.json",
-        "ideas":        data_dir / "ideas.json",
+        "shopping":     tmp_path / "shopping.json",
+        "todo":         tmp_path / "todo.json",
+        "todo_pro":     tmp_path / "todo_pro.json",
+        "appointments": tmp_path / "appointments.json",
+        "ideas":        tmp_path / "ideas.json",
     }
-    new_pending  = data_dir / "pending.json"
-    new_learning = data_dir / "user_learning.json"
 
     with (
-        patch.object(_storage, "FILES",         new_files),
-        patch.object(_storage, "PENDING_FILE",  new_pending),
-        patch.object(_storage, "LEARNING_FILE", new_learning),
-        patch.object(_ul,      "LEARNING_FILE", new_learning),
+        patch.object(_storage, "FILES", new_files),
         patch("app.cleaning.categorize_with_llm", return_value=None),
         patch("app.cleaning.get_learned_category", return_value=None),
         patch("app.cleaning.get_learned_synonym",  return_value=None),
     ):
-        yield _storage, data_dir
+        yield _storage
+
+    import app.database as _db2
+    from pathlib import Path
+    _db2.set_db_path(str(Path(__file__).resolve().parent.parent / "data" / "ambient.db"))
+    _db2.init_db()
 
 
 # ---------------------------------------------------------------------------
@@ -61,37 +53,42 @@ class TestRenameDoesNotLearnSynonym:
     def test_rename_shopping_no_synonym_written(self, storage):
         """
         Renaming a shopping item (e.g. 'whisky' → 'whiskey') must not add
-        any entry to the synonyms dict in user_learning.json.
-        This was a regression where learn_synonym was called from rename_item.
+        any entry to the synonyms table in SQLite.
         """
-        mod, data_dir = storage
+        import app.database as _db
 
-        mod.add_item("shopping", "whisky")
-        data = json.loads((data_dir / "shopping.json").read_text())
+        storage.add_item("shopping", "whisky")
+        data = storage.get_list("shopping")
         item_id = data[0]["id"]
 
-        learning_before = json.loads((data_dir / "user_learning.json").read_text())
-        synonyms_before = dict(learning_before["synonyms"])
+        conn = _db.get_db()
+        syns_before = conn.execute(
+            "SELECT COUNT(*) FROM learning_synonyms"
+        ).fetchone()[0]
+        conn.close()
 
-        mod.rename_item("shopping", item_id, "whiskey")
+        storage.rename_item("shopping", item_id, "whiskey")
 
-        learning_after = json.loads((data_dir / "user_learning.json").read_text())
-        assert learning_after["synonyms"] == synonyms_before, (
-            "rename_item must not write synonyms into user_learning.json"
+        conn = _db.get_db()
+        syns_after = conn.execute(
+            "SELECT COUNT(*) FROM learning_synonyms"
+        ).fetchone()[0]
+        conn.close()
+
+        assert syns_after == syns_before, (
+            "rename_item must not write synonyms into learning_synonyms"
         )
 
     def test_learn_synonym_function_not_invoked_on_rename(self, storage):
         """
         Verify via mock that learn_synonym is never called when renaming.
         """
-        mod, data_dir = storage
-
-        mod.add_item("shopping", "pomme")
-        data = json.loads((data_dir / "shopping.json").read_text())
+        storage.add_item("shopping", "pomme")
+        data = storage.get_list("shopping")
         item_id = data[0]["id"]
 
-        with patch.object(mod, "learn_synonym") as mock_learn:
-            mod.rename_item("shopping", item_id, "pommes")
+        with patch.object(storage, "learn_synonym") as mock_learn:
+            storage.rename_item("shopping", item_id, "pommes")
             mock_learn.assert_not_called()
 
 
@@ -147,15 +144,13 @@ class TestQuantityNotDuplicatedInText:
           - text stored must be "poires" (not "10 poires")
           - quantity stored must be 10
         """
-        mod, data_dir = storage
-
-        mod.add_item("shopping", "pommes")
-        data = json.loads((data_dir / "shopping.json").read_text())
+        storage.add_item("shopping", "pommes")
+        data = storage.get_list("shopping")
         item_id = data[0]["id"]
 
-        mod.rename_item("shopping", item_id, "10 poires")
+        storage.rename_item("shopping", item_id, "10 poires")
 
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         entry = data[0]
 
         assert entry["text"] == "poires", (
@@ -166,15 +161,13 @@ class TestQuantityNotDuplicatedInText:
 
     def test_rename_without_qty_text_is_clean(self, storage):
         """rename to a bare noun: text stored must be that noun, qty None."""
-        mod, data_dir = storage
-
-        mod.add_item("shopping", "pommes", quantity=5)
-        data = json.loads((data_dir / "shopping.json").read_text())
+        storage.add_item("shopping", "pommes", quantity=5)
+        data = storage.get_list("shopping")
         item_id = data[0]["id"]
 
-        mod.rename_item("shopping", item_id, "poires")
+        storage.rename_item("shopping", item_id, "poires")
 
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         entry = data[0]
 
         assert entry["text"] == "poires"
@@ -192,12 +185,10 @@ class TestQuantityFusion:
         add_item("shopping", "poires", quantity=3)
         → one item with quantity=23
         """
-        mod, data_dir = storage
+        storage.add_item("shopping", "poires", quantity=20)
+        storage.add_item("shopping", "poires", quantity=3)
 
-        mod.add_item("shopping", "poires", quantity=20)
-        mod.add_item("shopping", "poires", quantity=3)
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
 
         assert len(data) == 1, (
             f"Expected 1 merged entry, got {len(data)}. "
@@ -209,24 +200,20 @@ class TestQuantityFusion:
 
     def test_add_with_unit_fusion(self, storage):
         """3 kg farine + 2 kg farine = 5 kg farine."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "farine", quantity=3, unit="kg")
+        storage.add_item("shopping", "farine", quantity=2, unit="kg")
 
-        mod.add_item("shopping", "farine", quantity=3, unit="kg")
-        mod.add_item("shopping", "farine", quantity=2, unit="kg")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 1
         assert data[0]["quantity"] == 5
         assert data[0]["unit"] == "kg"
 
     def test_no_fusion_different_units(self, storage):
         """2 kg pommes + 3 pommes (no unit) → 2 separate items."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "pommes", quantity=2, unit="kg")
+        storage.add_item("shopping", "pommes", quantity=3, unit=None)
 
-        mod.add_item("shopping", "pommes", quantity=2, unit="kg")
-        mod.add_item("shopping", "pommes", quantity=3, unit=None)
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 2, (
             "Items with incompatible units must NOT be merged."
         )
@@ -243,12 +230,10 @@ class TestCrossUnitFusion:
         500 g farine + 1 kg farine → single item at 1.5 kg.
         Previously two separate entries were created because units differed.
         """
-        mod, data_dir = storage
+        storage.add_item("shopping", "farine", quantity=500, unit="g")
+        storage.add_item("shopping", "farine", quantity=1, unit="kg")
 
-        mod.add_item("shopping", "farine", quantity=500, unit="g")
-        mod.add_item("shopping", "farine", quantity=1, unit="kg")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
 
         assert len(data) == 1, (
             f"Expected 1 merged entry, got {len(data)}. "
@@ -266,12 +251,10 @@ class TestCrossUnitFusion:
         500 ml lait + 50 cl lait → single item at 1 l.
         Previously two separate entries were created.
         """
-        mod, data_dir = storage
+        storage.add_item("shopping", "lait", quantity=500, unit="ml")
+        storage.add_item("shopping", "lait", quantity=50, unit="cl")
 
-        mod.add_item("shopping", "lait", quantity=500, unit="ml")
-        mod.add_item("shopping", "lait", quantity=50, unit="cl")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
 
         assert len(data) == 1, (
             f"Expected 1 merged entry, got {len(data)}. "

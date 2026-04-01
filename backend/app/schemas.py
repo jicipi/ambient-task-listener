@@ -17,3 +17,7 @@ class UpdateItemInput(BaseModel):
 
 class RenameItemInput(BaseModel):
     text: str
+
+
+class ReorderInput(BaseModel):
+    ids: list[str]

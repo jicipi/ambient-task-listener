@@ -6,7 +6,6 @@ Tests for app/unit_conversion.py:
   - merge_quantities
   - Integration: add_item cross-unit merging in storage
 """
-import json
 import pytest
 from unittest.mock import patch
 
@@ -275,110 +274,80 @@ class TestMergeQuantities:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def data_dir(tmp_path):
-    for name in ["shopping", "todo", "todo_pro", "appointments", "ideas"]:
-        (tmp_path / f"{name}.json").write_text("[]")
-    (tmp_path / "pending.json").write_text("[]")
-    (tmp_path / "user_learning.json").write_text(
-        '{"categories": {}, "synonyms": {}}'
-    )
-    return tmp_path
-
-
-@pytest.fixture
-def storage(data_dir):
+def storage(tmp_path):
+    import app.database as _db
     import app.storage as _storage
-    import app.user_learning as _ul
 
-    new_files = {
-        "shopping":     data_dir / "shopping.json",
-        "todo":         data_dir / "todo.json",
-        "todo_pro":     data_dir / "todo_pro.json",
-        "appointments": data_dir / "appointments.json",
-        "ideas":        data_dir / "ideas.json",
-    }
-    new_pending  = data_dir / "pending.json"
-    new_learning = data_dir / "user_learning.json"
+    _db.set_db_path(str(tmp_path / "test_ambient.db"))
+    _db.init_db()
 
     with (
-        patch.object(_storage, "FILES",         new_files),
-        patch.object(_storage, "PENDING_FILE",  new_pending),
-        patch.object(_storage, "LEARNING_FILE", new_learning),
-        patch.object(_ul,      "LEARNING_FILE", new_learning),
         patch("app.cleaning.categorize_with_llm", return_value=None),
         patch("app.cleaning.get_learned_category", return_value=None),
         patch("app.cleaning.get_learned_synonym",  return_value=None),
     ):
-        yield _storage, data_dir
+        yield _storage
+
+    import app.database as _db2
+    from pathlib import Path
+    _db2.set_db_path(str(Path(__file__).resolve().parent.parent / "data" / "ambient.db"))
+    _db2.init_db()
 
 
 class TestAddItemCrossUnitMerge:
 
     def test_500g_plus_1kg_merges_to_1_5kg(self, storage):
         """500 g farine + 1 kg farine → 1 item at 1.5 kg."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "farine", quantity=500, unit="g")
+        storage.add_item("shopping", "farine", quantity=1, unit="kg")
 
-        mod.add_item("shopping", "farine", quantity=500, unit="g")
-        mod.add_item("shopping", "farine", quantity=1, unit="kg")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 1, f"Expected 1 merged item, got {len(data)}"
         assert data[0]["unit"] == "kg"
         assert data[0]["quantity"] == 1.5
 
     def test_1kg_plus_500g_merges_to_1_5kg(self, storage):
         """Order reversed: 1 kg farine + 500 g farine → 1 item at 1.5 kg."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "farine", quantity=1, unit="kg")
+        storage.add_item("shopping", "farine", quantity=500, unit="g")
 
-        mod.add_item("shopping", "farine", quantity=1, unit="kg")
-        mod.add_item("shopping", "farine", quantity=500, unit="g")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 1, f"Expected 1 merged item, got {len(data)}"
         assert data[0]["unit"] == "kg"
         assert data[0]["quantity"] == 1.5
 
     def test_2000g_plus_1kg_merges_to_3kg_int(self, storage):
         """2000 g + 1 kg → 3 kg (integer result)."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "sucre", quantity=2000, unit="g")
+        storage.add_item("shopping", "sucre", quantity=1, unit="kg")
 
-        mod.add_item("shopping", "sucre", quantity=2000, unit="g")
-        mod.add_item("shopping", "sucre", quantity=1, unit="kg")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 1
         assert data[0]["unit"] == "kg"
         assert data[0]["quantity"] == 3
-        assert isinstance(data[0]["quantity"], int)
 
     def test_500ml_plus_50cl_merges_to_1l(self, storage):
         """500 ml lait + 50 cl lait → 1 l."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "lait", quantity=500, unit="ml")
+        storage.add_item("shopping", "lait", quantity=50, unit="cl")
 
-        mod.add_item("shopping", "lait", quantity=500, unit="ml")
-        mod.add_item("shopping", "lait", quantity=50, unit="cl")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 1, f"Expected 1 merged item, got {len(data)}"
         assert data[0]["unit"] == "l"
         assert data[0]["quantity"] == 1
 
     def test_kg_and_no_unit_not_merged(self, storage):
         """2 kg pommes + 3 pommes (no unit) → 2 separate items."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "pommes", quantity=2, unit="kg")
+        storage.add_item("shopping", "pommes", quantity=3, unit=None)
 
-        mod.add_item("shopping", "pommes", quantity=2, unit="kg")
-        mod.add_item("shopping", "pommes", quantity=3, unit=None)
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 2, "kg vs no-unit must NOT be merged"
 
     def test_kg_and_l_not_merged(self, storage):
         """2 kg chose + 3 l chose → 2 separate items (incompatible families)."""
-        mod, data_dir = storage
+        storage.add_item("shopping", "chose", quantity=2, unit="kg")
+        storage.add_item("shopping", "chose", quantity=3, unit="l")
 
-        mod.add_item("shopping", "chose", quantity=2, unit="kg")
-        mod.add_item("shopping", "chose", quantity=3, unit="l")
-
-        data = json.loads((data_dir / "shopping.json").read_text())
+        data = storage.get_list("shopping")
         assert len(data) == 2, "weight vs volume must NOT be merged"

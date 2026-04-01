@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.action_extractor import extract_action_with_fallback as extract_action
-from app.schemas import TextInput, ListItemInput, UpdateItemInput, RenameItemInput
+from app.schemas import TextInput, ListItemInput, UpdateItemInput, RenameItemInput, ReorderInput
 from app.storage import (
     add_item,
     get_all_lists,
@@ -16,6 +16,7 @@ from app.storage import (
     delete_item,
     update_item_done,
     rename_item,
+    reorder_list,
     update_item_category,
     update_item_scheduled_date,
 )
@@ -260,6 +261,19 @@ async def rename_list_item(list_name: str, item_id: str, payload: RenameItemInpu
         "updated": updated,
         "text": payload.text,
     }
+
+@app.patch("/lists/{list_name}/reorder")
+async def reorder_list_items(list_name: str, payload: ReorderInput) -> dict:
+    if list_name not in VALID_LISTS:
+        raise HTTPException(status_code=404, detail="Unknown list")
+
+    ok = reorder_list(list_name, payload.ids)
+
+    if ok:
+        await notify_clients("update")
+
+    return {"list": list_name, "reordered": ok}
+
 
 @app.post("/extract")
 def extract(text_input: TextInput) -> dict:

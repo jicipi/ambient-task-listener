@@ -608,115 +608,163 @@ class _ListDetailPageState extends State<ListDetailPage> {
             );
           }
 
-          // Other lists: group by category
-          final Map<String, List<Map<String, dynamic>>> grouped = {};
+          // Shopping: group by category with headers
+          if (widget.listKey == "shopping") {
+            final Map<String, List<Map<String, dynamic>>> grouped = {};
 
-          for (final item in items) {
-            final category =
-                (item["category"] ?? "autres").toString().toLowerCase();
-            grouped.putIfAbsent(category, () => []);
-            grouped[category]!.add(item);
-          }
+            for (final item in items) {
+              final cat = (item["category"] ?? "autres").toString().toLowerCase();
+              grouped.putIfAbsent(cat, () => []);
+              grouped[cat]!.add(item);
+            }
 
-          final categories = grouped.keys.toList()..sort();
+            final categories = grouped.keys.toList()..sort();
 
-          return ListView(
-            children: categories.map((category) {
-              final categoryItems = grouped[category]!;
-              final showHeader = widget.listKey == "shopping";
+            return ListView(
+              children: categories.map((cat) {
+                final categoryItems = grouped[cat]!;
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showHeader)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      category.toUpperCase(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        cat.toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
-                  ),
-                  ...categoryItems.map((item) {
-                    final itemId = item["id"];
-                    final text = item["text"] ?? "";
-                    final done = item["done"] == true;
-                    final quantity = item["quantity"];
-                    final unit = item["unit"];
-                    final category = item["category"] ?? "autres";
+                    ...categoryItems.map((item) {
+                      final itemId = item["id"];
+                      final text = item["text"] ?? "";
+                      final done = item["done"] == true;
+                      final quantity = item["quantity"];
+                      final unit = item["unit"];
+                      final itemCategory = item["category"] ?? "autres";
 
-                    String display = text;
-                    if (quantity != null && unit != null) {
-                      display = "$quantity $unit $text";
-                    } else if (quantity != null) {
-                      display = "$quantity $text";
-                    }
+                      String display = text;
+                      if (quantity != null && unit != null) {
+                        display = "$quantity $unit $text";
+                      } else if (quantity != null) {
+                        display = "$quantity $text";
+                      }
 
-                    return Dismissible(
-                      key: ValueKey('item-$itemId'),
-                      direction: DismissDirection.horizontal,
-                      background: Container(
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.only(left: 20),
-                        color: Colors.blue,
-                        child: const Icon(Icons.edit, color: Colors.white),
-                      ),
-                      secondaryBackground: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        color: Colors.red,
-                        child: const Icon(Icons.delete_outline, color: Colors.white),
-                      ),
-                      confirmDismiss: (direction) async {
-                        if (direction == DismissDirection.startToEnd) {
-                          await _editItemDialog(
-                            itemId: itemId,
-                            currentText: text,
-                            currentCategory: category,
-                            currentQuantity: quantity,
-                            currentUnit: unit?.toString(),
-                          );
-                        } else {
-                          await _deleteItem(itemId: itemId);
-                        }
-                        return false;
-                      },
-                      child: widget.listKey == "shopping"
-                          ? ListTile(
-                              leading: Checkbox(
-                                value: done,
-                                onChanged: (v) {
-                                  if (v != null) _toggleDone(itemId: itemId, newValue: v);
-                                },
-                              ),
-                              title: Text(
-                                display,
-                                style: TextStyle(
-                                  decoration: done ? TextDecoration.lineThrough : null,
-                                ),
-                              ),
-                            )
-                          : _InlineEditTile(
-                              key: ValueKey('inline-$itemId'),
-                              text: text,
-                              display: display,
-                              done: done,
-                              onToggle: () => _toggleDone(itemId: itemId, newValue: !done),
-                              onRename: (newText) async {
-                                await _api.renameItem(
-                                  listName: widget.listKey,
-                                  itemId: itemId.toString(),
-                                  text: newText,
-                                );
-                                _reload();
-                              },
+                      return Dismissible(
+                        key: ValueKey('item-$itemId'),
+                        direction: DismissDirection.horizontal,
+                        background: Container(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(left: 20),
+                          color: Colors.blue,
+                          child: const Icon(Icons.edit, color: Colors.white),
+                        ),
+                        secondaryBackground: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          color: Colors.red,
+                          child: const Icon(Icons.delete_outline, color: Colors.white),
+                        ),
+                        confirmDismiss: (direction) async {
+                          if (direction == DismissDirection.startToEnd) {
+                            await _editItemDialog(
+                              itemId: itemId,
+                              currentText: text,
+                              currentCategory: itemCategory,
+                              currentQuantity: quantity,
+                              currentUnit: unit?.toString(),
+                            );
+                          } else {
+                            await _deleteItem(itemId: itemId);
+                          }
+                          return false;
+                        },
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: done,
+                            onChanged: (v) {
+                              if (v != null) _toggleDone(itemId: itemId, newValue: v);
+                            },
+                          ),
+                          title: Text(
+                            display,
+                            style: TextStyle(
+                              decoration: done ? TextDecoration.lineThrough : null,
                             ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              }).toList(),
+            );
+          }
+
+          // todo / todo_pro / ideas: reorderable list with drag & drop
+          return ReorderableListView(
+            onReorder: (oldIndex, newIndex) async {
+              if (newIndex > oldIndex) newIndex -= 1;
+              final reordered = List<Map<String, dynamic>>.from(items);
+              final moved = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, moved);
+              final ids = reordered
+                  .map((e) => e["id"].toString())
+                  .toList();
+              await _api.reorderItems(listName: widget.listKey, ids: ids);
+              _reload();
+            },
+            children: items.map((item) {
+              final itemId = item["id"];
+              final text = item["text"] ?? "";
+              final done = item["done"] == true;
+
+              return Dismissible(
+                key: ValueKey('inline-$itemId'),
+                direction: DismissDirection.horizontal,
+                background: Container(
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 20),
+                  color: Colors.blue,
+                  child: const Icon(Icons.edit, color: Colors.white),
+                ),
+                secondaryBackground: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  color: Colors.red,
+                  child: const Icon(Icons.delete_outline, color: Colors.white),
+                ),
+                confirmDismiss: (direction) async {
+                  if (direction == DismissDirection.startToEnd) {
+                    await _editItemDialog(
+                      itemId: itemId.toString(),
+                      currentText: text,
+                      currentCategory: (item["category"] ?? "autres").toString(),
+                      currentQuantity: item["quantity"],
+                      currentUnit: item["unit"]?.toString(),
                     );
-                  }),
-                ],
+                  } else {
+                    await _deleteItem(itemId: itemId.toString());
+                  }
+                  return false;
+                },
+                child: _InlineEditTile(
+                  key: ValueKey('tile-$itemId'),
+                  text: text,
+                  display: text,
+                  done: done,
+                  onToggle: () => _toggleDone(itemId: itemId.toString(), newValue: !done),
+                  onRename: (newText) async {
+                    await _api.renameItem(
+                      listName: widget.listKey,
+                      itemId: itemId.toString(),
+                      text: newText,
+                    );
+                    _reload();
+                  },
+                ),
               );
             }).toList(),
           );
